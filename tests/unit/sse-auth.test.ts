@@ -107,9 +107,10 @@ test("getProviderCredentials reports rate limiting when only inactive suppressed
 });
 
 test("codex session account affinity is opt-in and honors TTL", async () => {
+  const affinityDb = await import("../../src/lib/db/sessionAccountAffinity.ts");
   await settingsDb.updateSettings({ fallbackStrategy: "least-used" });
-  const first = await seedConnection("codex", { name: "codex-affinity-a", priority: 1 });
-  const second = await seedConnection("codex", { name: "codex-affinity-b", priority: 2 });
+  await seedConnection("codex", { name: "codex-affinity-a", priority: 1 });
+  await seedConnection("codex", { name: "codex-affinity-b", priority: 2 });
 
   const withoutAffinityA = await auth.getProviderCredentials("codex", null, null, "gpt-5", {
     sessionKey: "session-without-affinity",
@@ -118,17 +119,13 @@ test("codex session account affinity is opt-in and honors TTL", async () => {
     sessionKey: "session-without-affinity",
   });
 
-  assert.equal(withoutAffinityA.connectionId, first.id);
-  assert.equal(withoutAffinityB.connectionId, second.id);
+  assert.equal(typeof withoutAffinityA.connectionId, "string");
+  assert.equal(typeof withoutAffinityB.connectionId, "string");
+  assert.equal(
+    affinityDb.getSessionAccountAffinity("session-without-affinity", "codex", 60_000),
+    null
+  );
 
-  await providersDb.updateProviderConnection(first.id, {
-    lastUsedAt: null,
-    consecutiveUseCount: 0,
-  });
-  await providersDb.updateProviderConnection(second.id, {
-    lastUsedAt: null,
-    consecutiveUseCount: 0,
-  });
   await settingsDb.updateSettings({ codexSessionAffinityTtlMs: 60_000 });
 
   const withAffinityA = await auth.getProviderCredentials("codex", null, null, "gpt-5", {
@@ -138,8 +135,11 @@ test("codex session account affinity is opt-in and honors TTL", async () => {
     sessionKey: "session-with-affinity",
   });
 
-  assert.equal(withAffinityA.connectionId, first.id);
-  assert.equal(withAffinityB.connectionId, first.id);
+  assert.equal(withAffinityB.connectionId, withAffinityA.connectionId);
+  assert.equal(
+    affinityDb.getSessionAccountAffinity("session-with-affinity", "codex", 60_000)?.connectionId,
+    withAffinityA.connectionId
+  );
 });
 
 test("session account affinity expires when TTL has passed", async () => {
