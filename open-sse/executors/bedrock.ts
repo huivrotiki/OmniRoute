@@ -48,7 +48,47 @@ function normalizeRole(role) {
   return "user";
 }
 
-function textBlocksFromContent(content) {
+function normalizeToolUseId(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function createToolUseIdTracker() {
+  const usedIds = new Set();
+  const assignedByOriginal = new Map();
+  const resultCursorByOriginal = new Map();
+
+  const uniqueId = (base) => {
+    let candidate = base;
+    let suffix = 2;
+    while (usedIds.has(candidate)) {
+      candidate = `${base}_${suffix}`;
+      suffix += 1;
+    }
+    usedIds.add(candidate);
+    return candidate;
+  };
+
+  return {
+    register(rawId) {
+      const original = normalizeToolUseId(rawId) || `toolu_${randomUUID()}`;
+      const assigned = uniqueId(original);
+      const list = assignedByOriginal.get(original) || [];
+      list.push(assigned);
+      assignedByOriginal.set(original, list);
+      return assigned;
+    },
+    resolveResult(rawId) {
+      const original = normalizeToolUseId(rawId) || `toolu_${randomUUID()}`;
+      const assigned = assignedByOriginal.get(original);
+      if (!assigned || assigned.length === 0) return original;
+      const index = resultCursorByOriginal.get(original) || 0;
+      resultCursorByOriginal.set(original, index + 1);
+      return assigned[Math.min(index, assigned.length - 1)];
+    },
+  };
+}
+
+function textBlocksFromContent(content, toolUseIds = null, options = {}) {
   if (typeof content === "string") return content.trim() ? [{ text: content }] : [];
   if (!Array.isArray(content)) return [];
 
@@ -75,13 +115,21 @@ function textBlocksFromContent(content) {
       continue;
     }
     if (type === "tool_use" && typeof p.id === "string" && typeof p.name === "string") {
-      blocks.push({ toolUse: { toolUseId: p.id, name: p.name, input: asRecord(p.input) } });
+      const rawId = normalizeToolUseId(p.id);
+      if (rawId && options.skipToolUseIds?.has(rawId)) continue;
+      blocks.push({
+        toolUse: {
+          toolUseId: toolUseIds ? toolUseIds.register(rawId) : rawId || `toolu_${randomUUID()}`,
+          name: p.name,
+          input: asRecord(p.input),
+        },
+      });
       continue;
     }
     if (type === "tool_result" && typeof p.tool_use_id === "string") {
       blocks.push({
         toolResult: {
-          toolUseId: p.tool_use_id,
+          toolUseId: toolUseIds ? toolUseIds.resolveResult(p.tool_use_id) : p.tool_use_id,
           content: [{ text: toText(p.content) }],
           status: p.is_error ? "error" : "success",
         },
@@ -128,16 +176,14 @@ function toolResultContentFromMessage(message) {
 
 function messagesFromOpenAI(messages) {
   const converted = [];
+  const toolUseIds = createToolUseIdTracker();
 
   for (const message of messages) {
     if (!message || typeof message !== "object") continue;
     if (message.role === "system" || message.role === "developer") continue;
 
     if (message.role === "tool") {
-      const toolUseId =
-        typeof message.tool_call_id === "string" && message.tool_call_id.trim()
-          ? message.tool_call_id.trim()
-          : `toolu_${randomUUID()}`;
+      const toolUseId = toolUseIds.resolveResult(message.tool_call_id);
       converted.push({
         role: "user",
         content: [
@@ -153,8 +199,13 @@ function messagesFromOpenAI(messages) {
       continue;
     }
 
-    const content = textBlocksFromContent(message.content);
     const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+    const toolCallIds = new Set(
+      toolCalls.map((call) => normalizeToolUseId(call?.id)).filter(Boolean)
+    );
+    const content = textBlocksFromContent(message.content, toolUseIds, {
+      skipToolUseIds: toolCallIds,
+    });
     for (const call of toolCalls) {
       const fn = asRecord(call.function);
       const rawArgs = typeof fn.arguments === "string" ? fn.arguments : "{}";
@@ -166,7 +217,7 @@ function messagesFromOpenAI(messages) {
       }
       content.push({
         toolUse: {
-          toolUseId: typeof call.id === "string" ? call.id : `toolu_${randomUUID()}`,
+          toolUseId: toolUseIds.register(call.id),
           name: typeof fn.name === "string" && fn.name ? fn.name : "unknown_tool",
           input,
         },
