@@ -96,7 +96,7 @@ test("openAIToBedrockConverse avoids duplicate Bedrock toolUse ids from mixed to
   assert.equal(payload.messages[2].content[0].toolResult.toolUseId, "call_dup");
 });
 
-test("openAIToBedrockConverse renames repeated OpenAI tool call ids and pairs results", () => {
+test("openAIToBedrockConverse drops duplicate pending tool call ids", () => {
   const payload = openAIToBedrockConverse("anthropic.claude-sonnet-4-6", {
     messages: [
       { role: "user", content: "use tools" },
@@ -117,14 +117,50 @@ test("openAIToBedrockConverse renames repeated OpenAI tool call ids and pairs re
         ],
       },
       { role: "tool", tool_call_id: "call_dup", content: "first result" },
-      { role: "tool", tool_call_id: "call_dup", content: "second result" },
     ],
   });
 
   const toolUseIds = payload.messages[1].content.map((block) => block.toolUse?.toolUseId);
-  assert.deepEqual(toolUseIds, ["call_dup", "call_dup_2"]);
+  assert.deepEqual(toolUseIds, ["call_dup"]);
   assert.equal(payload.messages[2].content[0].toolResult.toolUseId, "call_dup");
-  assert.equal(payload.messages[3].content[0].toolResult.toolUseId, "call_dup_2");
+});
+
+test("openAIToBedrockConverse allows a tool id to be reused after its result", () => {
+  const payload = openAIToBedrockConverse("anthropic.claude-sonnet-4-6", {
+    messages: [
+      { role: "user", content: "first" },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: "call_reuse",
+            type: "function",
+            function: { name: "first", arguments: "{}" },
+          },
+        ],
+      },
+      { role: "tool", tool_call_id: "call_reuse", content: "first result" },
+      { role: "user", content: "again" },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: "call_reuse",
+            type: "function",
+            function: { name: "second", arguments: "{}" },
+          },
+        ],
+      },
+      { role: "tool", tool_call_id: "call_reuse", content: "second result" },
+    ],
+  });
+
+  assert.equal(payload.messages[1].content[0].toolUse.toolUseId, "call_reuse");
+  assert.equal(payload.messages[2].content[0].toolResult.toolUseId, "call_reuse");
+  assert.equal(payload.messages[4].content[0].toolUse.toolUseId, "call_reuse");
+  assert.equal(payload.messages[5].content[0].toolResult.toolUseId, "call_reuse");
 });
 
 test("BedrockExecutor converts non-streaming Converse output to OpenAI chat completion JSON", async () => {

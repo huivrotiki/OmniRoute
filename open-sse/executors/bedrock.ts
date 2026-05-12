@@ -176,14 +176,15 @@ function toolResultContentFromMessage(message) {
 
 function messagesFromOpenAI(messages) {
   const converted = [];
-  const toolUseIds = createToolUseIdTracker();
+  const pendingToolUseIds = new Set();
 
   for (const message of messages) {
     if (!message || typeof message !== "object") continue;
     if (message.role === "system" || message.role === "developer") continue;
 
     if (message.role === "tool") {
-      const toolUseId = toolUseIds.resolveResult(message.tool_call_id);
+      const toolUseId = normalizeToolUseId(message.tool_call_id) || `toolu_${randomUUID()}`;
+      pendingToolUseIds.delete(toolUseId);
       converted.push({
         role: "user",
         content: [
@@ -203,7 +204,7 @@ function messagesFromOpenAI(messages) {
     const toolCallIds = new Set(
       toolCalls.map((call) => normalizeToolUseId(call?.id)).filter(Boolean)
     );
-    const content = textBlocksFromContent(message.content, toolUseIds, {
+    const content = textBlocksFromContent(message.content, null, {
       skipToolUseIds: toolCallIds,
     });
     for (const call of toolCalls) {
@@ -215,9 +216,12 @@ function messagesFromOpenAI(messages) {
       } catch {
         input = { arguments: rawArgs };
       }
+      const toolUseId = normalizeToolUseId(call.id) || `toolu_${randomUUID()}`;
+      if (pendingToolUseIds.has(toolUseId)) continue;
+      pendingToolUseIds.add(toolUseId);
       content.push({
         toolUse: {
-          toolUseId: toolUseIds.register(call.id),
+          toolUseId,
           name: typeof fn.name === "string" && fn.name ? fn.name : "unknown_tool",
           input,
         },
