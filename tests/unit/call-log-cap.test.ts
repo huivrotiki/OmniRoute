@@ -236,6 +236,7 @@ test("rotateCallLogs removes expired rows and orphaned artifacts but keeps fresh
     .prepare("SELECT artifact_relpath FROM call_logs WHERE id = ?")
     .get("fresh-log");
   const freshAbsPath = path.join(TEST_DATA_DIR, "call_logs", (freshRow as any).artifact_relpath);
+
   assert.equal(
     (
       core

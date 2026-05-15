@@ -6,7 +6,7 @@ import {
 import { SUPPORTED_BATCH_ENDPOINTS } from "@/shared/constants/batchEndpoints";
 import { MAX_REQUEST_BODY_LIMIT_MB, MIN_REQUEST_BODY_LIMIT_MB } from "@/shared/constants/bodySize";
 import { COMBO_CONFIG_MODES } from "@/shared/constants/comboConfigMode";
-import { isLocalProvider } from "@/shared/constants/providers";
+import { providerAllowsOptionalApiKey } from "@/shared/constants/providers";
 import { HIDEABLE_SIDEBAR_ITEM_IDS } from "@/shared/constants/sidebarVisibility";
 import { isForbiddenUpstreamHeaderName } from "@/shared/constants/upstreamHeaders";
 
@@ -272,10 +272,7 @@ export const createProviderSchema = z
   })
   .superRefine((data, ctx) => {
     const apiKey = typeof data.apiKey === "string" ? data.apiKey.trim() : "";
-    const apiKeyOptional =
-      data.provider === "searxng-search" ||
-      data.provider === "petals" ||
-      isLocalProvider(data.provider);
+    const apiKeyOptional = providerAllowsOptionalApiKey(data.provider);
     if (!apiKeyOptional && apiKey.length === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -305,6 +302,7 @@ export const createProviderSchema = z
 export const createKeySchema = z.object({
   name: z.string().min(1, "Name is required").max(200),
   noLog: z.boolean().optional(),
+  scopes: z.array(z.string().trim().min(1).max(64)).max(16).optional(),
 });
 
 export const createSyncTokenSchema = z.object({
@@ -790,6 +788,11 @@ const connectionCooldownProfileSchema = z
   .object({
     baseCooldownMs: z.number().int().min(0).optional(),
     useUpstreamRetryHints: z.boolean().optional(),
+    // Issue #2100 follow-up: per-profile toggle for upstream 429 hint trust.
+    // `null` is an explicit unset sentinel — PATCH handler deletes the key
+    // from stored settings so the per-provider default resolves at runtime.
+    // `undefined` (key omitted) means "leave existing value unchanged".
+    useUpstream429BreakerHints: z.boolean().nullable().optional(),
     maxBackoffSteps: z.number().int().min(0).optional(),
   })
   .strict();
@@ -1279,6 +1282,12 @@ export const oauthPollSchema = z.object({
   extraData: z.unknown().optional(),
 });
 
+/** Import a raw API token (e.g. WINDSURF_API_KEY) without going through the browser OAuth flow. */
+export const oauthImportTokenSchema = z.object({
+  token: z.string().trim().min(1, "Token is required"),
+  connectionId: z.string().optional(),
+});
+
 export const cursorImportSchema = z.object({
   accessToken: z.string().trim().min(1, "Access token is required"),
   machineId: z.string().trim().optional(),
@@ -1347,7 +1356,7 @@ export const updateComboSchema = z
     system_message: z.string().max(50000).optional(),
     tool_filter_regex: z.string().max(1000).optional(),
     context_cache_protection: z.boolean().optional(),
-    context_length: z.number().int().min(1000).max(2000000).optional(),
+    context_length: z.number().int().min(1000).max(2000000).optional().nullable(),
     compressionOverride: comboCompressionOverrideSchema.optional(),
   })
   .superRefine((value, ctx) => {
@@ -1482,8 +1491,21 @@ export const updateKeyPermissionsSchema = z
     autoResolve: z.boolean().optional(),
     isActive: z.boolean().optional(),
     throttleDelayMs: z.number().int().min(0).max(300000).optional(),
+    isBanned: z.boolean().optional(),
+    expiresAt: z.string().datetime().nullable().optional(),
     maxSessions: z.number().int().min(0).max(10000).optional(),
     accessSchedule: z.union([accessScheduleSchema, z.null()]).optional(),
+    rateLimits: z
+      .union([
+        z
+          .array(
+            z.object({ limit: z.number().int().positive(), window: z.number().int().positive() })
+          )
+          .max(50),
+        z.null(),
+      ])
+      .optional(),
+    scopes: z.array(z.string().trim().min(1).max(64)).max(16).optional(),
   })
   .superRefine((value, ctx) => {
     if (
@@ -1495,8 +1517,12 @@ export const updateKeyPermissionsSchema = z
       value.autoResolve === undefined &&
       value.isActive === undefined &&
       value.throttleDelayMs === undefined &&
+      value.isBanned === undefined &&
+      value.expiresAt === undefined &&
       value.maxSessions === undefined &&
-      value.accessSchedule === undefined
+      value.accessSchedule === undefined &&
+      value.rateLimits === undefined &&
+      value.scopes === undefined
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -1583,6 +1609,7 @@ export const updateProviderConnectionSchema = z
     healthCheckInterval: z.coerce.number().int().min(0).optional(),
     group: z.union([z.string().max(100), z.null()]).optional(),
     maxConcurrent: z.union([z.null(), z.coerce.number().int().min(0)]).optional(),
+    projectId: z.union([z.string(), z.null()]).optional(),
     // Partial patch of per-connection provider-specific settings (e.g. quota toggles)
     providerSpecificData: z
       .record(z.string(), z.unknown())
@@ -1615,6 +1642,7 @@ export const providersBatchTestSchema = z
       "audio",
       "local",
       "upstream-proxy",
+      "cloud-agent",
     ]),
     // Frontend may send null when mode != 'provider' — accept and treat as missing
     providerId: z.string().trim().min(1).nullable().optional(),
@@ -1794,9 +1822,11 @@ export const v1SearchSchema = z
         "tavily-search",
         "google-pse-search",
         "linkup-search",
+        "ollama-search",
         "searchapi-search",
         "youcom-search",
         "searxng-search",
+        "zai-search",
       ])
       .optional(),
     max_results: z.coerce.number().int().min(1).max(100).default(5),

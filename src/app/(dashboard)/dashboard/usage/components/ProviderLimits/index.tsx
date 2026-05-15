@@ -42,6 +42,18 @@ const PROVIDER_CONFIG = {
   minimax: { label: "MiniMax", color: "#7C3AED" },
   "minimax-cn": { label: "MiniMax CN", color: "#DC2626" },
   nanogpt: { label: "NanoGPT", color: "#4F46E5" },
+  deepseek: { label: "DeepSeek", color: "#4D6BFE" },
+};
+
+// Currency symbol mapping
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: "$",
+  CNY: "¥",
+  EUR: "€",
+  GBP: "£",
+  JPY: "¥",
+  KRW: "₩",
+  INR: "₹",
 };
 
 const TIER_FILTERS = [
@@ -52,6 +64,7 @@ const TIER_FILTERS = [
   { key: "ultra", labelKey: "tierUltra" },
   { key: "pro", labelKey: "tierPro" },
   { key: "plus", labelKey: "tierPlus" },
+  { key: "lite", label: "Lite" },
   { key: "free", labelKey: "tierFree" },
   { key: "unknown", labelKey: "tierUnknown" },
 ];
@@ -215,6 +228,7 @@ export default function ProviderLimits() {
             plan: data.plan || null,
             message: data.message || null,
             raw: data,
+            stale: data._stale ? { since: data._staleSince, reason: data._staleReason } : null,
           },
         }));
         setLastRefreshedAt((prev) => ({
@@ -336,6 +350,7 @@ export default function ProviderLimits() {
       ultra: 0,
       pro: 0,
       plus: 0,
+      lite: 0,
       free: 0,
       unknown: 0,
     };
@@ -507,7 +522,7 @@ export default function ProviderLimits() {
                 color: active ? "var(--color-primary, #E54D5E)" : "var(--color-text-muted)",
               }}
             >
-              <span>{t(tier.labelKey)}</span>
+              <span>{tier.label || t(tier.labelKey)}</span>
               <span className="opacity-85">{tierCounts[tier.key] || 0}</span>
             </button>
           );
@@ -553,7 +568,12 @@ export default function ProviderLimits() {
                 {/* Account Info */}
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden shrink-0">
-                    <ProviderIcon providerId={conn.provider} size={32} className="object-contain" />
+                    <ProviderIcon
+                      providerId={conn.provider}
+                      size={32}
+                      type="color"
+                      className="object-contain"
+                    />
                   </div>
                   <div className="min-w-0">
                     <div className="text-[13px] font-semibold text-text-main truncate">
@@ -614,8 +634,11 @@ export default function ProviderLimits() {
                       const remainingPercentage = Math.round(remainingPercentageRaw);
                       const colors = getBarColor(remainingPercentage);
                       const cd = formatCountdown(q.resetAt);
-                      const shortName = formatQuotaLabel(q.name);
+                      const shortName = q.displayName || formatQuotaLabel(q.name);
                       const staleAfterReset = q.staleAfterReset === true;
+                      const details = Array.isArray(q.details)
+                        ? q.details.filter((detail) => detail && detail.used > 0)
+                        : [];
 
                       return (
                         <div
@@ -625,7 +648,7 @@ export default function ProviderLimits() {
                           }`}
                         >
                           {q.isCredits ? (
-                            /* ── AI Credits counter ── */
+                            /* ── AI Credits / Balance counter ── */
                             <>
                               <span
                                 className="text-[11px] font-semibold py-0.5 px-2 rounded whitespace-nowrap"
@@ -637,9 +660,12 @@ export default function ProviderLimits() {
                                 className="text-[12px] font-bold tabular-nums"
                                 style={{ color: colors.text }}
                               >
-                                {q.creditCount ?? q.remaining}
+                                {CURRENCY_SYMBOLS[q.currency] ?? q.currency ?? ""}
+                                {(q.creditCount ?? q.remaining).toLocaleString(undefined, {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
                               </span>
-                              <span className="text-[10px] text-text-muted">left</span>
                             </>
                           ) : (
                             /* ── Standard quota bar ── */
@@ -652,6 +678,16 @@ export default function ProviderLimits() {
                               >
                                 {shortName}
                               </span>
+
+                              {details.length > 0 ? (
+                                <span className="text-[10px] text-text-muted whitespace-nowrap">
+                                  {details
+                                    .map(
+                                      (detail) => `${formatQuotaLabel(detail.name)} ${detail.used}`
+                                    )
+                                    .join(" · ")}
+                                </span>
+                              ) : null}
 
                               {/* Countdown */}
                               {staleAfterReset ? (
@@ -693,19 +729,30 @@ export default function ProviderLimits() {
                 </div>
 
                 {/* Last Refreshed */}
-                <div className="text-center text-[11px] text-text-muted">
-                  {refreshedAt ? (
-                    <span>
-                      {new Date(refreshedAt).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        second: "2-digit",
-                        hour12: false,
-                      })}
-                    </span>
-                  ) : (
-                    "-"
-                  )}
+                <div className="text-center text-[11px]">
+                  {(() => {
+                    const stale = quota?.stale;
+                    const displayTime = stale?.since || refreshedAt;
+                    if (!displayTime) return <span className="text-text-muted">-</span>;
+                    const formatted = new Date(displayTime).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                      hour12: false,
+                    });
+                    if (stale) {
+                      return (
+                        <span
+                          className="text-amber-500 cursor-help"
+                          title={t("staleQuotaTooltip")}
+                          aria-label={t("staleQuotaTooltip")}
+                        >
+                          {formatted}
+                        </span>
+                      );
+                    }
+                    return <span className="text-text-muted">{formatted}</span>;
+                  })()}
                 </div>
 
                 {/* Actions */}
@@ -764,7 +811,10 @@ export default function ProviderLimits() {
           <div className="py-6 px-4 text-center text-text-muted text-[13px]">
             {t("noAccountsForTierFilter")}{" "}
             <strong>
-              {t(TIER_FILTERS.find((tier) => tier.key === tierFilter)?.labelKey || "tierUnknown")}
+              {(() => {
+                const tier = TIER_FILTERS.find((tier) => tier.key === tierFilter);
+                return tier?.label || t(tier?.labelKey || "tierUnknown");
+              })()}
             </strong>
             .
           </div>

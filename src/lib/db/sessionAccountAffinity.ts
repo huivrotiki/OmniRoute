@@ -10,6 +10,8 @@ type SessionAccountAffinityRecord = {
 };
 
 const NAMESPACE = "session_account_affinity";
+const CLEANUP_INTERVAL_MS = 5 * 60_000;
+
 let cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
 function normalizePositiveTtl(ttlMs: number | null | undefined): number {
@@ -153,7 +155,20 @@ export function cleanupStaleSessionAccountAffinities(
 
 export function startSessionAccountAffinityCleanup(): void {
   if (cleanupTimer) return;
-  cleanupTimer = setInterval(() => cleanupStaleSessionAccountAffinities(), 5 * 60_000);
+
+  try {
+    cleanupStaleSessionAccountAffinities();
+  } catch (error) {
+    console.warn("[SESSION_AFFINITY] Startup cleanup failed:", error);
+  }
+
+  cleanupTimer = setInterval(() => {
+    try {
+      cleanupStaleSessionAccountAffinities();
+    } catch (error) {
+      console.warn("[SESSION_AFFINITY] Periodic cleanup failed:", error);
+    }
+  }, CLEANUP_INTERVAL_MS);
   if (typeof cleanupTimer === "object" && "unref" in cleanupTimer) cleanupTimer.unref?.();
 }
 

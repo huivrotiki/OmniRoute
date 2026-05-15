@@ -36,6 +36,8 @@ import {
 } from "./autoCombo/scoring.ts";
 import { supportsToolCalling } from "./modelCapabilities.ts";
 import { getSessionConnection } from "./sessionManager.ts";
+import { generateRoutingHints } from "./manifestAdapter";
+import type { RoutingHint } from "./manifestAdapter";
 import { getModelContextLimit } from "../../src/lib/modelCapabilities";
 import { getProviderConnections } from "../../src/lib/db/providers";
 import {
@@ -109,7 +111,7 @@ const RESET_AWARE_DEFAULTS = {
   exhaustionGuardPercent: 10,
 };
 
-type ResolvedComboTarget = {
+export type ResolvedComboTarget = {
   kind: "model";
   stepId: string;
   executionKey: string;
@@ -257,11 +259,12 @@ function getTargetProvider(modelStr: string, providerId?: string | null): string
   return providerId || parsed.provider || parsed.providerAlias || "unknown";
 }
 
-function isStreamReadinessTimeoutErrorBody(errorBody: unknown): boolean {
+function isStreamReadinessFailureErrorBody(errorBody: unknown): boolean {
   if (!errorBody || typeof errorBody !== "object") return false;
   const error = (errorBody as Record<string, unknown>).error;
   if (!error || typeof error !== "object") return false;
-  return (error as Record<string, unknown>).code === "STREAM_READINESS_TIMEOUT";
+  const code = (error as Record<string, unknown>).code;
+  return code === "STREAM_READINESS_TIMEOUT" || code === "STREAM_EARLY_EOF";
 }
 
 function toRecordedTarget(target: ResolvedComboTarget) {
@@ -460,7 +463,7 @@ export function resolveNestedComboTargets(
 export function getComboFromData(modelStr, combosData) {
   const combos = Array.isArray(combosData) ? combosData : combosData?.combos || [];
   const combo = combos.find((c) => c.name === modelStr);
-  if (combo && combo.models && combo.models.length > 0) {
+  if (combo?.models && combo.models.length > 0) {
     return combo;
   }
   return null;
@@ -494,7 +497,7 @@ export function validateComboDAG(comboName, allCombos, visited = new Set(), dept
 
   const combos = Array.isArray(allCombos) ? allCombos : allCombos?.combos || [];
   const combo = combos.find((c) => c.name === comboName);
-  if (!combo || !combo.models) return;
+  if (!combo?.models) return;
 
   for (const entry of combo.models) {
     const modelName = normalizeModelEntry(entry).model;
@@ -553,7 +556,7 @@ function selectWeightedTarget<T extends { weight?: number }>(targets: T[]) {
     if (random <= 0) return target;
   }
 
-  return targets[targets.length - 1];
+  return targets.at(-1);
 }
 
 function orderTargetsForWeightedFallback<T extends { executionKey: string; weight: number }>(
@@ -566,7 +569,7 @@ function orderTargetsForWeightedFallback<T extends { executionKey: string; weigh
   if (!preserveExistingOrder) {
     rest.sort((a, b) => b.weight - a.weight);
   }
-  return [selected, ...rest].filter(Boolean) as T[];
+  return [selected, ...rest].filter(Boolean);
 }
 
 // shuffleArray and getNextModelFromDeck moved to src/shared/utils/shuffleDeck.ts
@@ -625,7 +628,7 @@ async function sortTargetsByCost(targets: ResolvedComboTarget[]) {
  */
 function sortModelsByUsage(models, comboName) {
   const metrics = getComboMetrics(comboName);
-  if (!metrics || !metrics.byModel) return models;
+  if (!metrics?.byModel) return models;
 
   const withUsage = models.map((modelStr) => ({
     modelStr,
@@ -1443,7 +1446,7 @@ async function applyRequestTagRouting(
         matchesRoutingTags(
           getConnectionRoutingTags(connection.providerSpecificData),
           tags,
-          matchMode as RoutingTagMatchMode
+          matchMode
         )
       )
       .map((connection) => connection.id)
@@ -1601,7 +1604,7 @@ export async function handleComboChat({
               const tagged = injectModelTag([choice.message], modelStr);
               // If the message had tool_calls but no string content, injectModelTag
               // appends a synthetic assistant message — use the last one
-              const taggedMsg = tagged[tagged.length - 1];
+              const taggedMsg = tagged.at(-1);
               const updatedJson = {
                 ...json,
                 choices: [{ ...choice, message: taggedMsg }, ...(json.choices?.slice(1) || [])],
@@ -1640,12 +1643,12 @@ export async function handleComboChat({
             // Fix #721: Look for either non-empty content OR tool_calls in the
             // SSE data. Tool-call-only responses have content:null, so we inject
             // the tag when we see a finish_reason approaching, or on first content.
-            const contentMatch = text.match(/"content":"([^"]+)/);
+            const contentMatch = RegExp(/"content":"([^"]+)/).exec(text);
             if (contentMatch) {
               // Inject tag at the beginning of the first content value
               const injected = text.replace(
                 /"content":"([^"]+)/,
-                `"content":"${tagContent.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}$1`
+                `"content":"${tagContent.replaceAll("\\", "\\\\").replaceAll('"', String.raw`\"`)}$1`
               );
               tagInjected = true;
               controller.enqueue(encoder.encode(injected));
@@ -1708,7 +1711,7 @@ export async function handleComboChat({
             const text = sanitizeDecoder.decode(chunk, { stream: true });
             if (text) {
               if (text.includes("<omniModel>")) {
-                const cleaned = text.replace(
+                const cleaned = text.replaceAll(
                   /(?:\\n|\n|\r)*<omniModel>[^<]+<\/omniModel>(?:\\n|\n|\r)*/g,
                   ""
                 );
@@ -1722,7 +1725,7 @@ export async function handleComboChat({
             const tail = sanitizeDecoder.decode();
             if (tail) {
               if (tail.includes("<omniModel>")) {
-                const cleaned = tail.replace(
+                const cleaned = tail.replaceAll(
                   /(?:\\n|\n|\r)*<omniModel>[^<]+<\/omniModel>(?:\\n|\n|\r)*/g,
                   ""
                 );
@@ -1819,11 +1822,13 @@ export async function handleComboChat({
 
     const autoConfigSource = combo?.autoConfig || combo?.config?.auto || combo?.config || {};
     const routingStrategy =
-      typeof autoConfigSource.routingStrategy === "string"
-        ? autoConfigSource.routingStrategy
-        : typeof autoConfigSource.strategyName === "string"
-          ? autoConfigSource.strategyName
-          : "rules";
+      typeof autoConfigSource.routerStrategy === "string"
+        ? autoConfigSource.routerStrategy
+        : typeof autoConfigSource.routingStrategy === "string"
+          ? autoConfigSource.routingStrategy
+          : typeof autoConfigSource.strategyName === "string"
+            ? autoConfigSource.strategyName
+            : "rules";
 
     const candidatePool = Array.isArray(autoConfigSource.candidatePool)
       ? autoConfigSource.candidatePool
@@ -1974,6 +1979,38 @@ export async function handleComboChat({
     log.info("COMBO", `Least-used ordering: ${orderedTargets[0]?.modelStr} has fewest requests`);
   } else if (strategy === "cost-optimized") {
     orderedTargets = await sortTargetsByCost(orderedTargets);
+    if (config.manifestRouting === true) {
+      try {
+        const manifestHint = generateRoutingHints(
+          orderedTargets.filter((t) => t.kind === "model"),
+          {
+            messages: Array.isArray(body?.messages) ? body.messages : [],
+            tools: body?.tools,
+            model: body?.model,
+          }
+        );
+        if (manifestHint.strategyModifier === "require-premium") {
+          const eligible = orderedTargets.filter(
+            (t) =>
+              t.kind !== "model" ||
+              manifestHint.eligibleTargets.some(
+                (e) => e.provider === t.provider && e.modelStr === t.modelStr
+              )
+          );
+          if (eligible.length > 0) orderedTargets = eligible;
+        }
+        log.debug(
+          {
+            strategyModifier: manifestHint.strategyModifier,
+            specificityLevel: manifestHint.specificityLevel,
+            score: manifestHint.specificity.score,
+          },
+          "manifest routing applied"
+        );
+      } catch (err) {
+        log.warn({ err }, "manifest routing failed, falling back to standard strategy");
+      }
+    }
     log.info("COMBO", `Cost-optimized ordering: cheapest first (${orderedTargets[0]?.modelStr})`);
   } else if (strategy === "reset-aware") {
     orderedTargets = await orderTargetsByResetAwareQuota(
@@ -2068,7 +2105,6 @@ export async function handleComboChat({
       if (result.ok) {
         const quality = await validateResponseQuality(result, clientRequestedStream, log);
         if (!quality.valid) {
-          const qualityFailureReason = `Upstream response failed quality validation: ${quality.reason}`;
           log.warn(
             "COMBO",
             `Model ${modelStr} returned 200 but failed quality check: ${quality.reason}`
@@ -2118,7 +2154,7 @@ export async function handleComboChat({
             if (quotaInfo) {
               const resetCandidates = [quotaInfo.window5h?.resetAt, quotaInfo.window7d?.resetAt]
                 .filter((value): value is string => typeof value === "string" && value.length > 0)
-                .sort();
+                .sort((a, b) => a.localeCompare(b));
               const handoffSourceMessages =
                 Array.isArray(body?.messages) && body.messages.length > 0
                   ? body.messages
@@ -2200,8 +2236,9 @@ export async function handleComboChat({
         }
       }
 
-      const isStreamReadinessTimeout =
-        result.status === 504 && isStreamReadinessTimeoutErrorBody(errorBody);
+      const isStreamReadinessFailure =
+        (result.status === 502 || result.status === 504) &&
+        isStreamReadinessFailureErrorBody(errorBody);
 
       // Fix #1681: Status 499 means client disconnected — stop combo loop immediately.
       // There is no point trying fallback models when nobody is listening.
@@ -2233,13 +2270,13 @@ export async function handleComboChat({
       );
 
       // Trigger shared provider circuit breaker for 5xx errors and connection failures
-      if (isProviderFailureCode(result.status)) {
+      if (!isStreamReadinessFailure && isProviderFailureCode(result.status)) {
         recordProviderFailure(provider, log, target.connectionId, profile);
       }
 
       // Check if this is a transient error worth retrying on same model
       const isTransient =
-        !isStreamReadinessTimeout && [408, 429, 500, 502, 503, 504].includes(result.status);
+        !isStreamReadinessFailure && [408, 429, 500, 502, 503, 504].includes(result.status);
       if (retry < maxRetries && isTransient) {
         continue; // Retry same model
       }
@@ -2439,7 +2476,6 @@ async function handleRoundRobinCombo({
         if (result.ok) {
           const quality = await validateResponseQuality(result, clientRequestedStream, log);
           if (!quality.valid) {
-            const qualityFailureReason = `Upstream response failed quality validation: ${quality.reason}`;
             log.warn(
               "COMBO-RR",
               `${modelStr} returned 200 but failed quality check: ${quality.reason}`
@@ -2509,8 +2545,12 @@ async function handleRoundRobinCombo({
             if (text) {
               errorText = text.substring(0, 500);
               errorBody = JSON.parse(text);
+              const parsedError = errorBody?.error;
               errorText =
-                errorBody?.error?.message || errorBody?.error || errorBody?.message || errorText;
+                (typeof parsedError === "object" && parsedError?.message) ||
+                (typeof parsedError === "string" ? parsedError : null) ||
+                errorBody?.message ||
+                errorText;
               retryAfter = errorBody?.retryAfter || null;
             }
           } catch {
@@ -2551,8 +2591,9 @@ async function handleRoundRobinCombo({
           }
         }
 
-        const isStreamReadinessTimeout =
-          result.status === 504 && isStreamReadinessTimeoutErrorBody(errorBody);
+        const isStreamReadinessFailure =
+          (result.status === 502 || result.status === 504) &&
+          isStreamReadinessFailureErrorBody(errorBody);
 
         // Round-robin uses the same target-level fallback rule as other combo
         // strategies: non-ok target responses fall through to the next target.
@@ -2575,7 +2616,11 @@ async function handleRoundRobinCombo({
         );
 
         // Transient errors → mark in semaphore so round-robin stops stampeding this target.
-        if (TRANSIENT_FOR_SEMAPHORE.includes(result.status) && cooldownMs > 0) {
+        if (
+          !isStreamReadinessFailure &&
+          TRANSIENT_FOR_SEMAPHORE.includes(result.status) &&
+          cooldownMs > 0
+        ) {
           semaphore.markRateLimited(semaphoreKey, cooldownMs);
           log.warn("COMBO-RR", `${modelStr} error ${result.status}, cooldown ${cooldownMs}ms`);
         }
@@ -2589,7 +2634,7 @@ async function handleRoundRobinCombo({
 
         // Transient error → retry same model
         const isTransient =
-          !isStreamReadinessTimeout && [408, 429, 500, 502, 503, 504].includes(result.status);
+          !isStreamReadinessFailure && [408, 429, 500, 502, 503, 504].includes(result.status);
         if (retry < maxRetries && isTransient) {
           continue;
         }

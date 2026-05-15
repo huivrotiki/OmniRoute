@@ -18,6 +18,7 @@ const DEFAULT_COMBO_CONFIG = {
   maxMessagesForSummary: 30,
   maxComboDepth: 3,
   trackMetrics: true,
+  manifestRouting: false,
   resetAwareSessionWeight: 0.35,
   resetAwareWeeklyWeight: 0.65,
   resetAwareTieBandPercent: 5,

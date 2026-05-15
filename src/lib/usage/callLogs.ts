@@ -36,6 +36,11 @@ import {
 
 type JsonRecord = Record<string, unknown>;
 
+const CALL_LOG_ROTATE_THROTTLE_MS = 60_000;
+let lastCallLogRotationScheduledAt = 0;
+let callLogRotateInFlight = false;
+let callLogRotateScheduled = false;
+
 type CallLogSummaryRow = {
   id: string;
   timestamp: string | null;
@@ -89,12 +94,7 @@ type DeleteResult = {
   deletedArtifacts: number;
 };
 
-const CALL_LOG_ROTATION_MIN_INTERVAL_MS = 60_000;
-const CALL_LOG_ROTATION_IDLE_DELAY_MS = 5_000;
-
 let logIdCounter = 0;
-let lastScheduledRotationAt = 0;
-let rotationTimer: ReturnType<typeof setTimeout> | null = null;
 
 function asRecord(value: unknown): JsonRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : {};
@@ -124,20 +124,6 @@ function parseInlineError(value: unknown): unknown {
   } catch {
     return value;
   }
-}
-
-function scheduleCallLogRotation() {
-  if (rotationTimer) return;
-
-  const now = Date.now();
-  if (now - lastScheduledRotationAt < CALL_LOG_ROTATION_MIN_INTERVAL_MS) return;
-
-  lastScheduledRotationAt = now;
-  rotationTimer = setTimeout(() => {
-    rotationTimer = null;
-    rotateCallLogs();
-  }, CALL_LOG_ROTATION_IDLE_DELAY_MS);
-  rotationTimer.unref?.();
 }
 
 function normalizeDetailState(value: unknown): CallLogDetailState {
@@ -751,9 +737,9 @@ export async function saveCallLog(entry: any) {
 }
 
 export function rotateCallLogs() {
-  if (!CALL_LOGS_DIR || !fs.existsSync(CALL_LOGS_DIR)) return;
-
   try {
+    if (!CALL_LOGS_DIR || !fs.existsSync(CALL_LOGS_DIR)) return;
+
     const retentionMs = getCallLogRetentionDays() * 24 * 60 * 60 * 1000;
     const cutoff = new Date(Date.now() - retentionMs).toISOString();
 
@@ -766,12 +752,40 @@ export function rotateCallLogs() {
   }
 }
 
-if (shouldPersistToDisk) {
-  try {
-    rotateCallLogs();
-  } catch {
-    // Best-effort startup cleanup.
+function runScheduledCallLogRotation() {
+  if (callLogRotateInFlight) return;
+  callLogRotateInFlight = true;
+  setImmediate(() => {
+    try {
+      rotateCallLogs();
+    } catch (error) {
+      console.error("[callLogs] Failed to rotate request artifacts:", (error as Error).message);
+    } finally {
+      callLogRotateInFlight = false;
+    }
+  });
+}
+
+export function scheduleCallLogRotation() {
+  if (!CALL_LOGS_DIR) return;
+  const elapsed = Date.now() - lastCallLogRotationScheduledAt;
+  if (elapsed >= CALL_LOG_ROTATE_THROTTLE_MS) {
+    lastCallLogRotationScheduledAt = Date.now();
+    runScheduledCallLogRotation();
+    return;
   }
+  if (callLogRotateScheduled) return;
+  callLogRotateScheduled = true;
+  lastCallLogRotationScheduledAt = Date.now();
+  const timer = setTimeout(() => {
+    callLogRotateScheduled = false;
+    runScheduledCallLogRotation();
+  }, CALL_LOG_ROTATE_THROTTLE_MS - elapsed);
+  timer.unref?.();
+}
+
+if (shouldPersistToDisk && process.env.NODE_ENV !== "test") {
+  scheduleCallLogRotation();
 }
 
 export async function getCallLogs(filter: any = {}) {

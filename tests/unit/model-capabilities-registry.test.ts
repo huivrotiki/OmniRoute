@@ -104,7 +104,8 @@ test("canonical model capability resolver lets exact synced metadata override gl
   );
 
   const codexGpt55 = modelCapabilities.getResolvedModelCapabilities("codex/gpt-5.5");
-  assert.equal(codexGpt55.contextWindow, 1050000);
+  assert.equal(codexGpt55.contextWindow, 400000);
+  assert.equal(codexGpt55.maxInputTokens, 400000);
   assert.equal(codexGpt55.maxOutputTokens, 128000);
   assert.equal(codexGpt55.supportsThinking, true);
   assert.equal(codexGpt55.supportsVision, true);
@@ -128,6 +129,9 @@ test("canonical model capability resolver lets exact synced metadata override gl
   );
   assert.equal(bedrockOpus46.contextWindow, 1000000);
   assert.equal(bedrockOpus46.maxOutputTokens, 128000);
+
+  const bareGpt55 = modelCapabilities.getResolvedModelCapabilities("gpt-5.5");
+  assert.equal(bareGpt55.contextWindow, 1050000);
 });
 
 test("GPT OSS and DeepSeek Reasoner models support tool calling", () => {

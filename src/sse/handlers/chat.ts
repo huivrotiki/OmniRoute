@@ -3,6 +3,8 @@ import {
   getProviderCredentialsWithQuotaPreflight,
   markAccountUnavailable,
   extractApiKey,
+  isValidApiKey,
+  extractSessionAffinityKey,
 } from "../services/auth";
 import {
   getRuntimeProviderProfile,
@@ -23,6 +25,7 @@ import {
   getModelTargetFormat,
   PROVIDER_ID_TO_ALIAS,
 } from "@omniroute/open-sse/config/providerModels.ts";
+import type { AutoVariant } from "@omniroute/open-sse/services/autoCombo/autoPrefix.ts";
 import * as log from "../utils/logger";
 import { checkAndRefreshToken } from "../services/tokenRefresh";
 import { deleteHandoff, getHandoff } from "@/lib/db/contextHandoffs";
@@ -43,6 +46,8 @@ import {
 } from "./chatHelpers";
 
 // Pipeline integration — wired modules
+import { classify429FromError, type FailureKind } from "@/shared/utils/classify429";
+import { resolveUseUpstream429BreakerHints } from "@/shared/utils/providerHints";
 import { getCircuitBreaker } from "../../shared/utils/circuitBreaker";
 import { markAccountExhaustedFrom429 } from "../../domain/quotaCache";
 import { RequestTelemetry, recordTelemetry } from "../../shared/utils/requestTelemetry";
@@ -73,6 +78,7 @@ import {
 } from "@omniroute/open-sse/services/codexQuotaFetcher.ts";
 import { registerBailianCodingPlanQuotaFetcher } from "@omniroute/open-sse/services/bailianQuotaFetcher.ts";
 import { registerCrofUsageFetcher } from "@omniroute/open-sse/services/crofUsageFetcher.ts";
+import { registerDeepseekQuotaFetcher } from "@omniroute/open-sse/services/deepseekQuotaFetcher.ts";
 import {
   getCooldownAwareRetryDecision,
   resolveCooldownAwareRetrySettings,
@@ -91,6 +97,9 @@ registerBailianCodingPlanQuotaFetcher();
 // opt-in) when the active bucket reaches zero.
 registerCrofUsageFetcher();
 
+// Register DeepSeek balance quota fetcher.
+// Hooks into quotaPreflight + quotaMonitor so combos can switch accounts before balance is exhausted.
+registerDeepseekQuotaFetcher();
 let combosCachePromise: Promise<unknown[]> | null = null;
 let combosCacheTs = 0;
 const COMBOS_CACHE_TTL_MS = 10_000;
@@ -204,6 +213,7 @@ export async function handleChat(request: any, clientRawRequest: any = null) {
   // T04: client-provided external session header has priority over generated fingerprint.
   const externalSessionId = extractExternalSessionId(request.headers);
   const sessionId = externalSessionId || generateStableSessionId(body);
+  const sessionAffinityKey = extractSessionAffinityKey(body, request.headers) || sessionId;
   const requestedConnectionId = request.headers.get("x-omniroute-connection")?.trim() || null;
   if (sessionId) {
     touchSession(sessionId);
@@ -225,9 +235,9 @@ export async function handleChat(request: any, clientRawRequest: any = null) {
   // Guardrail pre-call pipeline — prompt injection, PII masking, and future custom rules.
   telemetry.startPhase("validate");
   const preCallGuardrails = await guardrailRegistry.runPreCallHooks(body, {
-    apiKeyInfo,
+    apiKeyInfo: apiKeyInfo as any,
     disabledGuardrails: resolveDisabledGuardrails({
-      apiKeyInfo: apiKeyInfo as Record<string, unknown> | null,
+      apiKeyInfo: (apiKeyInfo ?? null) as any,
       body,
       headers: request.headers,
     }),
@@ -291,9 +301,78 @@ export async function handleChat(request: any, clientRawRequest: any = null) {
     telemetry.endPhase();
   }
 
+  // ── Zero-Config Auto-Routing (auto and auto/ prefix) ────────────────────────
+  // If the model ID is "auto" or starts with "auto/", bypass DB combo lookup
+  // entirely and generate a virtual auto-combo on-the-fly from connected providers.
+  let autoVariant: AutoVariant | undefined;
+  let isAutoRouting = resolvedModelStr === "auto" || resolvedModelStr.startsWith("auto/");
+  if (isAutoRouting) {
+    // C2: Enforce autoRoutingEnabled setting
+    const settings = await getSettings();
+    if (settings?.autoRoutingEnabled === false) {
+      return errorResponse(
+        HTTP_STATUS.BAD_REQUEST,
+        "Auto routing is disabled. Enable it in Settings > Routing."
+      );
+    }
+
+    try {
+      const { parseAutoPrefix } =
+        await import("@omniroute/open-sse/services/autoCombo/autoPrefix.ts");
+      const parsed = parseAutoPrefix(resolvedModelStr);
+      if (parsed.valid) {
+        autoVariant = parsed.variant;
+        // C3: Apply autoRoutingDefaultVariant from settings when bare "auto" is used
+        if (autoVariant === undefined && settings?.autoRoutingDefaultVariant) {
+          autoVariant = settings.autoRoutingDefaultVariant as AutoVariant;
+        }
+        log.info(
+          "AUTO",
+          `Zero-config routing variant: ${autoVariant || "default"} (model=${resolvedModelStr})`
+        );
+      } else {
+        log.warn("AUTO", `Invalid auto prefix format: ${resolvedModelStr}`);
+      }
+    } catch (err) {
+      log.error("AUTO", "Failed to load auto-prefix parser", { err });
+    }
+  }
+  // ────────────────────────────────────────────────────────────────────────────
+
   // Check if model is a combo (has multiple models with fallback)
   telemetry.startPhase("resolve");
-  const combo: any = await getComboForModel(resolvedModelStr);
+  let combo: any = await getComboForModel(resolvedModelStr);
+
+  // "auto" prefix fuzzy matching: "auto/fast" → "auto/best-fast", etc.
+  // parseModel splits "auto/fast" into provider="auto" which isn't a real provider.
+  if (!combo && resolvedModelStr.startsWith("auto/")) {
+    const suffix = resolvedModelStr.slice(5);
+    for (const candidate of [`auto/best-${suffix}`, `auto/${suffix}`]) {
+      combo = await getComboForModel(candidate);
+      if (combo) {
+        log.info("ROUTING", `"${resolvedModelStr}" → combo "${candidate}" (auto fuzzy)`);
+        break;
+      }
+    }
+  }
+
+  // Auto-prefix short-circuit: if auto/ prefix was detected, replace combo with virtual one
+  if (isAutoRouting && combo === null) {
+    try {
+      const { createVirtualAutoCombo } =
+        await import("@omniroute/open-sse/services/autoCombo/virtualFactory.ts");
+      const virtualCombo = await createVirtualAutoCombo(autoVariant);
+      virtualCombo.name = resolvedModelStr;
+      virtualCombo.id = resolvedModelStr;
+      combo = virtualCombo;
+      log.info(
+        "AUTO",
+        `Virtual auto-combo created: ${combo.name} (${virtualCombo.candidatePool?.length || 0} candidates)`
+      );
+    } catch (err) {
+      log.error("AUTO", "Failed to create virtual auto-combo", { err });
+    }
+  }
   if (combo) {
     log.info(
       "CHAT",
@@ -340,7 +419,7 @@ export async function handleChat(request: any, clientRawRequest: any = null) {
         allowedConnections,
         resolvedModel,
         {
-          sessionKey: sessionId ?? null,
+          sessionKey: sessionAffinityKey,
           sessionAffinityTtlMs: Number.isFinite(
             Number((settings as any)?.codexSessionAffinityTtlMs)
           )
@@ -376,6 +455,7 @@ export async function handleChat(request: any, clientRawRequest: any = null) {
           connectionId?: string | null;
           executionKey?: string | null;
           stepId?: string | null;
+          allowedConnectionIds?: string[] | null;
         }
       ) =>
         handleSingleModelChat(
@@ -388,6 +468,7 @@ export async function handleChat(request: any, clientRawRequest: any = null) {
           telemetry,
           {
             sessionId,
+            sessionAffinityKey,
             forceLiveComboTest: isComboLiveTest,
             forcedConnectionId: target?.connectionId ?? null,
             allowedConnectionIds: target?.allowedConnectionIds ?? null,
@@ -438,7 +519,12 @@ export async function handleChat(request: any, clientRawRequest: any = null) {
           combo.name,
           apiKeyInfo,
           telemetry,
-          { sessionId, emergencyFallbackTried: true, forceLiveComboTest: isComboLiveTest },
+          {
+            sessionId,
+            sessionAffinityKey,
+            emergencyFallbackTried: true,
+            forceLiveComboTest: isComboLiveTest,
+          },
           combo.strategy,
           true
         );
@@ -474,6 +560,7 @@ export async function handleChat(request: any, clientRawRequest: any = null) {
     telemetry,
     {
       sessionId,
+      sessionAffinityKey,
       forceLiveComboTest: isComboLiveTest,
       forcedConnectionId: requestedConnectionId,
     },
@@ -512,6 +599,7 @@ async function handleSingleModelChat(
     emergencyFallbackTried?: boolean;
     forceLiveComboTest?: boolean;
     sessionId?: string | null;
+    sessionAffinityKey?: string | null;
     forcedConnectionId?: string | null;
     allowedConnectionIds?: string[] | null;
     comboStepId?: string | null;
@@ -523,10 +611,62 @@ async function handleSingleModelChat(
   isCombo: boolean = false
 ) {
   // 1. Resolve model → provider/model
-  const resolved = await resolveModelOrError(modelStr, body, clientRawRequest?.endpoint);
+  const resolved = await resolveModelOrError(
+    modelStr,
+    body,
+    clientRawRequest?.endpoint,
+    clientRawRequest?.headers
+  );
   if (resolved.error) return resolved.error;
 
-  const { provider, model, sourceFormat, targetFormat, extendedContext } = resolved;
+  // Safety net: if auto-combo resolution returned a combo object, redirect
+  // to combo flow. This handles the case where the auto-fuzzy match in
+  // resolveModelOrError found a combo but the main handler's combo lookup missed it.
+  if ((resolved as any).combo) {
+    const redirectCombo = (resolved as any).combo;
+    log.info("ROUTING", `Auto-combo redirect from handleSingleModelChat for "${modelStr}"`);
+    log.info("ROUTING", `Auto-combo redirect to combo flow for "${modelStr}"`);
+    return handleComboChat({
+      body,
+      combo: redirectCombo,
+      handleSingleModel: (
+        b: any,
+        m: string,
+        target?: {
+          connectionId?: string | null;
+          executionKey?: string | null;
+          stepId?: string | null;
+        }
+      ) =>
+        handleSingleModelChat(
+          b,
+          m,
+          clientRawRequest,
+          request,
+          redirectCombo.name ?? modelStr,
+          apiKeyInfo,
+          telemetry,
+          {
+            sessionId: "", // safety-net redirect doesn't have session context
+            forceLiveComboTest: false,
+            forcedConnectionId: null,
+            allowedConnectionIds: null,
+            comboStepId: null,
+            comboExecutionKey: null,
+          },
+          redirectCombo.strategy ?? "priority",
+          false
+        ),
+      isModelAvailable: async () => true,
+      log,
+      settings: {},
+      allCombos: [],
+      relayOptions: undefined,
+      signal: request?.signal ?? null,
+    });
+  }
+
+  const { provider, model, sourceFormat, targetFormat, extendedContext, apiFormat } = resolved;
   const forceLiveComboTest = runtimeOptions.forceLiveComboTest === true;
   const hasForcedConnection =
     typeof runtimeOptions.forcedConnectionId === "string" &&
@@ -551,11 +691,25 @@ async function handleSingleModelChat(
   });
   if (gate) return gate;
 
+  // Issue #2100 follow-up: opt-in upstream 429 hint trust per provider.
+  const useHints429 = resolveUseUpstream429BreakerHints(
+    provider,
+    (providerProfile as { useUpstream429BreakerHints?: boolean }).useUpstream429BreakerHints
+  );
   const breaker = getCircuitBreaker(provider, {
     failureThreshold: providerProfile.failureThreshold,
     resetTimeout: providerProfile.resetTimeoutMs,
     onStateChange: (name: string, from: string, to: string) =>
       log.info("CIRCUIT", `${name}: ${from} → ${to}`),
+    ...(useHints429
+      ? {
+          cooldownByKind: {
+            rate_limit: 60_000,
+            quota_exhausted: 3_600_000,
+          } satisfies Partial<Record<FailureKind, number>>,
+          classifyError: classify429FromError,
+        }
+      : {}),
   });
 
   const userAgent = request?.headers?.get("user-agent") || "";
@@ -606,6 +760,7 @@ async function handleSingleModelChat(
               effectiveAllowedConnections,
               model,
               {
+                sessionKey: runtimeOptions.sessionAffinityKey ?? runtimeOptions.sessionId ?? null,
                 excludeConnectionIds: Array.from(excludedConnectionIds),
                 sessionKey: runtimeOptions.sessionId ?? null,
                 sessionAffinityTtlMs: Number.isFinite(
@@ -757,6 +912,7 @@ async function handleSingleModelChat(
         comboStepId: runtimeOptions.comboStepId ?? null,
         comboExecutionKey: runtimeOptions.comboExecutionKey ?? runtimeOptions.comboStepId ?? null,
         extendedContext,
+        modelApiFormat: apiFormat,
         providerProfile,
         cachedSettings: runtimeOptions.cachedSettings,
       });
@@ -797,7 +953,7 @@ async function handleSingleModelChat(
         return result.response;
       }
 
-      if (result.errorType === "stream_readiness_timeout") {
+      if (result.errorType === "stream_timeout" || result.errorType === "stream_early_eof") {
         // Stream readiness timeout is an upstream stall, not an account/quota failure.
         // Do NOT mark the account as unavailable or trip the circuit breaker.
         return result.response;
@@ -920,15 +1076,18 @@ async function handleSingleModelChat(
         dailyQuotaExhausted = true;
       }
 
-      // 7. Mark account as quota-exhausted on 429 response (non-daily-quota errors)
-      // For providers that route quota/cooldown at model scope, a 429 on one model
-      // does not mean the whole connection is exhausted.
-      // Daily quota errors are handled above; only process regular rate_limit here
+      // 7. Mark account as quota-exhausted only for explicit long-window quota signals.
+      // A plain 429/high-traffic response should trigger fallback/cooldown, not poison
+      // quotaCache as exhausted for 5 minutes while usage quota may still be available.
       if (!dailyQuotaExhausted) {
         const passthroughModels = credentials.providerSpecificData?.passthroughModels;
+        const failureKind =
+          result.status === 429
+            ? classify429FromError({ status: result.status, message: errorStr })
+            : undefined;
         if (
           result.status === 429 &&
-          shouldMarkAccountExhaustedFrom429(provider, model, passthroughModels)
+          shouldMarkAccountExhaustedFrom429(provider, model, passthroughModels, failureKind)
         ) {
           markAccountExhaustedFrom429(credentials.connectionId, provider);
         }

@@ -30,6 +30,9 @@ const apiKeysDb = await import("../../src/lib/db/apiKeys.ts");
 const combosDb = await import("../../src/lib/db/combos.ts");
 const modelComboMappingsDb = await import("../../src/lib/db/modelComboMappings.ts");
 const costRules = await import("../../src/domain/costRules.ts");
+const rateLimiter = await import("../../src/shared/utils/rateLimiter.ts");
+
+rateLimiter.setRateLimiterTestMode(true);
 
 async function resetStorage() {
   apiKeysDb.resetApiKeyState();
@@ -540,5 +543,5 @@ test("enforceApiKeyPolicy enforces request-per-minute limits and returns success
     "openai/gpt-4.1"
   );
   assert.equal(second.rejection.status, 429);
-  assert.match(await readErrorMessage(second.rejection), /Per-minute request limit exceeded/);
+  assert.match(await readErrorMessage(second.rejection), /Request limit exceeded/);
 });
