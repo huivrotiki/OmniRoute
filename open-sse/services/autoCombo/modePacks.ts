@@ -21,6 +21,7 @@ export const MODE_PACKS: Record<string, ScoringWeights> = {
     stability: 0.0,
     tierPriority: 0.05,
     contextAffinity: 0.06,
+    resetWindowAffinity: 0,
   },
   // Prioritize cost. tierPriority replaces 0.05 from stability.
   "cost-saver": {
@@ -32,6 +33,7 @@ export const MODE_PACKS: Record<string, ScoringWeights> = {
     stability: 0.05,
     tierPriority: 0.05,
     contextAffinity: 0.05,
+    resetWindowAffinity: 0,
   },
   // Prioritize task fitness. tierPriority replaces 0.05 from latencyInv.
   "quality-first": {
@@ -43,6 +45,7 @@ export const MODE_PACKS: Record<string, ScoringWeights> = {
     stability: 0.15,
     tierPriority: 0.05,
     contextAffinity: 0.05,
+    resetWindowAffinity: 0,
   },
   // Prioritize quota availability. tierPriority replaces 0.05 from taskFit.
   "offline-friendly": {
@@ -54,6 +57,7 @@ export const MODE_PACKS: Record<string, ScoringWeights> = {
     stability: 0.1,
     tierPriority: 0.05,
     contextAffinity: 0.05,
+    resetWindowAffinity: 0,
   },
 };
 

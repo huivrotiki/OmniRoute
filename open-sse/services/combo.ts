@@ -117,6 +117,7 @@ type QuotaFetchCacheConfig = {
   quotaCacheTtlMs: number;
   quotaCacheMaxStaleMs: number;
 };
+type ResetWindowConfig = ReturnType<typeof resolveResetWindowConfig>;
 
 export type ResolvedComboTarget = {
   kind: "model";
@@ -1292,6 +1293,21 @@ function getResetWindowTimestampMs(quota: unknown, windows: ResetWindowName[]): 
   return Number.isFinite(selectedResetMs) ? selectedResetMs : Infinity;
 }
 
+function getResetWindowHorizonMs(windows: ResetWindowName[]): number {
+  if (windows.includes("monthly")) return 30 * 24 * 60 * 60 * 1000;
+  if (windows.includes("weekly")) return RESET_AWARE_WEEKLY_WINDOW_MS;
+  return RESET_AWARE_SESSION_WINDOW_MS;
+}
+
+function calculateResetWindowAffinity(quota: unknown, config: ResetWindowConfig): number {
+  const resetMs = getResetWindowTimestampMs(quota, config.windows);
+  if (!Number.isFinite(resetMs)) return 0.5;
+
+  const msUntilReset = resetMs - Date.now();
+  if (msUntilReset <= 0) return 1;
+  return clamp01(1 - msUntilReset / getResetWindowHorizonMs(config.windows));
+}
+
 async function orderTargetsByResetWindow(
   targets: ResolvedComboTarget[],
   comboName: string,
@@ -1531,10 +1547,12 @@ function getBootstrapLatencyMs(modelId) {
 async function buildAutoCandidates(
   targets,
   comboName,
-  sessionId: string | null | undefined = null
+  sessionId: string | null | undefined = null,
+  resetWindowConfig: ResetWindowConfig = resolveResetWindowConfig(null)
 ) {
   const metrics = getComboMetrics(comboName);
   const { getPricingForModel } = await import("../../src/lib/localDb");
+  const quotaPromises = new Map<string, Promise<unknown>>();
   let historicalLatencyStats = {};
   try {
     const { getModelLatencyStats } = await import("../../src/lib/usageDb");
@@ -1603,6 +1621,26 @@ async function buildAutoCandidates(
       const circuitBreakerState =
         breakerStateRaw === "OPEN" || breakerStateRaw === "HALF_OPEN" ? breakerStateRaw : "CLOSED";
       const contextAffinity = calculateTargetContextAffinity(target, sessionId);
+      let resetWindowAffinity = 0.5;
+      const fetcher = getQuotaFetcher(provider);
+      if (fetcher && target.connectionId) {
+        const quotaKey = `${provider}:${target.connectionId}`;
+        if (!quotaPromises.has(quotaKey)) {
+          quotaPromises.set(
+            quotaKey,
+            fetchResetAwareQuotaWithCache({
+              provider,
+              connectionId: target.connectionId,
+              fetcher,
+              config: resetWindowConfig,
+              log: {},
+              comboName,
+            })
+          );
+        }
+        const quota = await quotaPromises.get(quotaKey)!;
+        resetWindowAffinity = calculateResetWindowAffinity(quota, resetWindowConfig);
+      }
 
       return {
         stepId: target.stepId,
@@ -1620,6 +1658,7 @@ async function buildAutoCandidates(
         accountTier: "standard",
         quotaResetIntervalSecs: 86400,
         contextAffinity,
+        resetWindowAffinity,
       };
     })
   );
@@ -2091,6 +2130,7 @@ export async function handleComboChat({
       : undefined;
     const modePack =
       typeof autoConfigSource.modePack === "string" ? autoConfigSource.modePack : undefined;
+    const resetWindowConfig = resolveResetWindowConfig(autoConfigSource);
 
     let lastKnownGoodProvider: string | undefined;
     try {
@@ -2104,7 +2144,8 @@ export async function handleComboChat({
     const candidates = await buildAutoCandidates(
       eligibleTargets,
       combo.name,
-      relayOptions?.sessionId
+      relayOptions?.sessionId,
+      resetWindowConfig
     );
     if (candidates.length > 0) {
       let selectedProvider = null;

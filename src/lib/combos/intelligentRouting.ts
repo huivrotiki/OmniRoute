@@ -16,6 +16,7 @@ export type IntelligentRoutingWeights = {
   tierAffinity: number;
   specificityMatch: number;
   contextAffinity: number;
+  resetWindowAffinity: number;
 };
 
 export type IntelligentRoutingConfig = {
@@ -45,6 +46,7 @@ export const DEFAULT_INTELLIGENT_WEIGHTS: IntelligentRoutingWeights = {
   tierAffinity: 0.05,
   specificityMatch: 0.05,
   contextAffinity: 0.08,
+  resetWindowAffinity: 0,
 };
 
 export const MODE_PACK_OPTIONS = [
@@ -72,6 +74,7 @@ export const FACTOR_LABELS: Record<keyof IntelligentRoutingWeights, string> = {
   tierAffinity: "Tier Affinity",
   specificityMatch: "Specificity",
   contextAffinity: "Context Affinity",
+  resetWindowAffinity: "Reset Window",
 };
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -140,6 +143,9 @@ export function normalizeIntelligentRoutingConfig(config: unknown): IntelligentR
         toFiniteNumber(rawWeights.specificityMatch) ?? DEFAULT_INTELLIGENT_WEIGHTS.specificityMatch,
       contextAffinity:
         toFiniteNumber(rawWeights.contextAffinity) ?? DEFAULT_INTELLIGENT_WEIGHTS.contextAffinity,
+      resetWindowAffinity:
+        toFiniteNumber(rawWeights.resetWindowAffinity) ??
+        DEFAULT_INTELLIGENT_WEIGHTS.resetWindowAffinity,
     },
     routerStrategy:
       typeof configRecord.routerStrategy === "string" &&

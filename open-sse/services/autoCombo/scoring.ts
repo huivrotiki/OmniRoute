@@ -1,13 +1,7 @@
 /**
  * Auto-Combo Scoring Function
  *
- * Calculates a weighted score for each provider candidate based on 6 factors:
- *   1. Quota        (0.20) — residual capacity [0..1]
- *   2. Health       (0.25) — circuit breaker state
- *   3. CostInv      (0.20) — inverse cost normalized to pool
- *   4. LatencyInv   (0.15) — inverse p95 latency normalized to pool
- *   5. TaskFit      (0.10) — model × taskType fitness score
- *   6. Stability    (0.10) — variance-based prediction of consistency
+ * Calculates a weighted score for each provider candidate.
  */
 
 import type { RoutingHint } from "../manifestAdapter";
@@ -23,6 +17,7 @@ export interface ScoringFactors {
   tierAffinity: number;
   specificityMatch: number;
   contextAffinity: number;
+  resetWindowAffinity: number;
 }
 
 export interface ScoringWeights {
@@ -36,6 +31,7 @@ export interface ScoringWeights {
   tierAffinity: number;
   specificityMatch: number;
   contextAffinity: number;
+  resetWindowAffinity: number;
 }
 
 export const DEFAULT_WEIGHTS: ScoringWeights = {
@@ -49,6 +45,7 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
   tierAffinity: 0.05,
   specificityMatch: 0.05,
   contextAffinity: 0.08,
+  resetWindowAffinity: 0,
 };
 
 export interface ProviderCandidate {
@@ -67,6 +64,8 @@ export interface ProviderCandidate {
   quotaResetIntervalSecs?: number;
   /** Score [0..1] for staying on the current session's provider/account/model path. */
   contextAffinity?: number;
+  /** Score [0..1] for quota reset-window preference; sooner selected reset windows score higher. */
+  resetWindowAffinity?: number;
 }
 
 export interface ScoredProvider {
@@ -91,7 +90,8 @@ export function calculateScore(factors: ScoringFactors, weights: ScoringWeights)
     weights.tierPriority * factors.tierPriority +
     (weights.tierAffinity ?? 0) * factors.tierAffinity +
     (weights.specificityMatch ?? 0) * factors.specificityMatch +
-    (weights.contextAffinity ?? 0) * factors.contextAffinity
+    (weights.contextAffinity ?? 0) * factors.contextAffinity +
+    (weights.resetWindowAffinity ?? 0) * factors.resetWindowAffinity
   );
 }
 
@@ -185,6 +185,7 @@ export function calculateFactors(
     tierAffinity: calculateTierAffinity(candidate, manifestHint),
     specificityMatch: calculateSpecificityMatch(candidate, manifestHint),
     contextAffinity: candidate.contextAffinity ?? 0.5,
+    resetWindowAffinity: candidate.resetWindowAffinity ?? 0.5,
   };
 }
 
