@@ -431,6 +431,11 @@ export async function handleChat(request: any, clientRawRequest: any = null) {
         resolvedModel,
         {
           sessionKey: sessionAffinityKey,
+          sessionAffinityTtlMs: Number.isFinite(
+            Number((settings as any)?.codexSessionAffinityTtlMs)
+          )
+            ? Number((settings as any).codexSessionAffinityTtlMs)
+            : null,
           ...(target?.connectionId ? { forcedConnectionId: target.connectionId } : {}),
         }
       );
@@ -494,7 +499,7 @@ export async function handleChat(request: any, clientRawRequest: any = null) {
       allCombos,
       apiKeyAllowedConnections: apiKeyInfo?.allowedConnections ?? null,
       relayOptions:
-        combo.strategy === "context-relay"
+        combo.strategy === "context-relay" || combo.strategy === "auto"
           ? {
               sessionId,
               config: relayConfig,
@@ -768,6 +773,12 @@ async function handleSingleModelChat(
               {
                 sessionKey: runtimeOptions.sessionAffinityKey ?? runtimeOptions.sessionId ?? null,
                 excludeConnectionIds: Array.from(excludedConnectionIds),
+                sessionKey: runtimeOptions.sessionId ?? null,
+                sessionAffinityTtlMs: Number.isFinite(
+                  Number((runtimeOptions.cachedSettings as any)?.codexSessionAffinityTtlMs)
+                )
+                  ? Number((runtimeOptions.cachedSettings as any).codexSessionAffinityTtlMs)
+                  : null,
                 ...(forceLiveComboTest
                   ? {
                       allowSuppressedConnections: true,

@@ -1,8 +1,8 @@
-FROM node:26.1.0-trixie-slim AS builder
+FROM node:24-slim AS builder
 WORKDIR /app
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends libsecret-1-0 ca-certificates \
+  && apt-get install -y --no-install-recommends libsecret-1-0 ca-certificates python3 make g++ \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
@@ -19,7 +19,7 @@ RUN if [ -f package-lock.json ]; then \
 COPY . ./
 RUN mkdir -p /app/data && npm run build -- --webpack
 
-FROM node:26.1.0-trixie-slim AS runner-base
+FROM node:24-slim AS runner-base
 WORKDIR /app
 
 LABEL org.opencontainers.image.title="omniroute" \
@@ -56,9 +56,9 @@ COPY --from=builder /app/src/lib/db/migrations ./migrations
 ENV OMNIROUTE_MIGRATIONS_DIR=/app/migrations
 # MITM server.cjs is spawned at runtime via child_process — not traced by nft
 COPY --from=builder /app/src/mitm/server.cjs ./src/mitm/server.cjs
-# Documentation files and OpenAPI spec are read from disk at runtime.
-# Next.js standalone tracing does not include them.
-COPY --from=builder /app/docs ./docs
+# Runtime docs are pruned by .dockerignore to English markdown + OpenAPI.
+# Next.js standalone tracing does not include docs read via fs.
+COPY --from=builder /app/.next/standalone/docs ./docs
 
 COPY --from=builder /app/scripts/dev/run-standalone.mjs ./dev/run-standalone.mjs
 COPY --from=builder /app/scripts/build/runtime-env.mjs ./build/runtime-env.mjs

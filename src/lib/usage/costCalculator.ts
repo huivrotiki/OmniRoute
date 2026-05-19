@@ -128,10 +128,11 @@ export async function calculateCost(
       if (normalized !== model) {
         pricing = await getPricingForModel(provider, normalized);
       }
-      if (!pricing && (provider.toLowerCase() === "codex" || provider.toLowerCase() === "cx")) {
-        const stripped = stripCodexEffortSuffix(normalized);
-        if (stripped !== normalized) {
-          pricing = await getPricingForModel(provider, stripped);
+      const providerKey = normalizeServiceTier(provider);
+      if (!pricing && (providerKey === "codex" || providerKey === "cx")) {
+        const effortlessModel = stripCodexEffortSuffix(normalized);
+        if (effortlessModel !== normalized) {
+          pricing = await getPricingForModel(provider, effortlessModel);
         }
       }
     }

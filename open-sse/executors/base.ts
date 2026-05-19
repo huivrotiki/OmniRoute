@@ -211,6 +211,7 @@ export function sanitizeReasoningEffortForProvider(
     b.reasoning && typeof b.reasoning === "object" && !Array.isArray(b.reasoning)
       ? (b.reasoning as Record<string, unknown>)
       : null;
+  const hasTopLevelReasoningEffort = Object.prototype.hasOwnProperty.call(b, "reasoning_effort");
   const effort = b.reasoning_effort ?? reasoning?.effort;
   if (effort === undefined) return body;
   const effortStr = typeof effort === "string" ? effort.toLowerCase() : "";
@@ -221,7 +222,10 @@ export function sanitizeReasoningEffortForProvider(
       "REASONING_SANITIZE",
       `${provider}/${modelStr}: downgraded reasoning_effort xhigh → high`
     );
-    const next: Record<string, unknown> = { ...b, reasoning_effort: "high" };
+    const next: Record<string, unknown> = { ...b };
+    if (hasTopLevelReasoningEffort) {
+      next.reasoning_effort = "high";
+    }
     if (reasoning) {
       next.reasoning = { ...reasoning, effort: "high" };
     }

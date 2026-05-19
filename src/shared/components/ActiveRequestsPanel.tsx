@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
+import { maskAccount } from "@/shared/utils/formatting";
+import useEmailPrivacyStore from "@/store/emailPrivacyStore";
 
 type ActiveRequestRow = {
   model: string;
@@ -28,6 +30,7 @@ function formatDuration(ms: number): string {
 
 export default function ActiveRequestsPanel() {
   const t = useTranslations("logs");
+  const { emailsVisible } = useEmailPrivacyStore();
   const [rows, setRows] = useState<ActiveRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRow, setSelectedRow] = useState<ActiveRequestRow | null>(null);
@@ -79,6 +82,8 @@ export default function ActiveRequestsPanel() {
     return null;
   }
 
+  const selectedAccountLabel = selectedRow ? maskAccount(selectedRow.account, emailsVisible) : "";
+
   return (
     <div className="rounded-xl border border-border bg-surface">
       <div className="flex items-center justify-between gap-4 border-b border-border px-4 py-3">
@@ -117,27 +122,32 @@ export default function ActiveRequestsPanel() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr
-                key={`${row.account}:${row.provider}:${row.model}:${row.startedAt}`}
-                className="border-t border-border/60"
-              >
-                <td className="px-4 py-3 font-medium text-text-main">{row.model}</td>
-                <td className="px-4 py-3 text-text-muted">{row.provider}</td>
-                <td className="px-4 py-3 text-text-muted">{row.account}</td>
-                <td className="px-4 py-3 text-text-main">{formatDuration(row.runningTimeMs)}</td>
-                <td className="px-4 py-3 text-text-main">{row.count}</td>
-                <td className="px-4 py-3">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedRow(row)}
-                    className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text-main transition-colors hover:bg-sidebar/40"
-                  >
-                    {t("viewPayloads")}
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {rows.map((row) => {
+              const accountLabel = maskAccount(row.account, emailsVisible);
+              return (
+                <tr
+                  key={`${row.account}:${row.provider}:${row.model}:${row.startedAt}`}
+                  className="border-t border-border/60"
+                >
+                  <td className="px-4 py-3 font-medium text-text-main">{row.model}</td>
+                  <td className="px-4 py-3 text-text-muted">{row.provider}</td>
+                  <td className="px-4 py-3 text-text-muted" title={accountLabel}>
+                    {accountLabel}
+                  </td>
+                  <td className="px-4 py-3 text-text-main">{formatDuration(row.runningTimeMs)}</td>
+                  <td className="px-4 py-3 text-text-main">{row.count}</td>
+                  <td className="px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRow(row)}
+                      className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text-main transition-colors hover:bg-sidebar/40"
+                    >
+                      {t("viewPayloads")}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -152,7 +162,7 @@ export default function ActiveRequestsPanel() {
                 </h4>
                 <p className="mt-1 text-sm text-text-muted">
                   {t("runningRequestDetailMeta", {
-                    account: selectedRow.account,
+                    account: selectedAccountLabel,
                     elapsed: formatDuration(selectedRow.runningTimeMs),
                   })}
                 </p>

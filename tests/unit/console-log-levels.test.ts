@@ -8,6 +8,7 @@ import { updateSettings } from "../../src/lib/db/settings";
 
 const TEST_LOG_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-console-log-levels-"));
 const TEST_LOG_PATH = path.join(TEST_LOG_DIR, "app.log");
+process.once("exit", () => fs.rmSync(TEST_LOG_DIR, { recursive: true, force: true }));
 
 const originalLogFilePath = process.env.APP_LOG_FILE_PATH;
 process.env.APP_LOG_FILE_PATH = TEST_LOG_PATH;
@@ -25,7 +26,6 @@ test.after(async () => {
   } else {
     process.env.APP_LOG_FILE_PATH = originalLogFilePath;
   }
-  fs.rmSync(TEST_LOG_DIR, { recursive: true, force: true });
 });
 
 test("console log API normalizes numeric pino levels correctly", async () => {

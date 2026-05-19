@@ -139,6 +139,12 @@ const RENAMED_MIGRATION_COMPATIBILITY = [
     toVersion: "050",
     toName: "session_account_affinity",
   },
+  {
+    fromVersion: "052",
+    fromName: "manifest_routing",
+    toVersion: "056",
+    toName: "manifest_routing",
+  },
 ] as const;
 
 const LEGACY_VERSION_SLOT_MIGRATIONS = [

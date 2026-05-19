@@ -14,16 +14,32 @@
  */
 
 import { createInterface } from "node:readline";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { existsSync } from "node:fs";
+import { homedir, platform } from "node:os";
 import bcrypt from "bcryptjs";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const APP_NAME = "omniroute";
+const BCRYPT_SALT_ROUNDS = 12;
 
-// Resolve data directory — same logic as the server
-const DATA_DIR = process.env.DATA_DIR || resolve(__dirname, "..", "data");
-const DB_PATH = resolve(DATA_DIR, "settings.db");
+function resolveDataDir() {
+  const configured = process.env.DATA_DIR?.trim();
+  if (configured) return resolve(configured);
+
+  const homeDir = homedir();
+  if (platform() === "win32") {
+    const appData = process.env.APPDATA || resolve(homeDir, "AppData", "Roaming");
+    return resolve(appData, APP_NAME);
+  }
+
+  const xdgConfigHome = process.env.XDG_CONFIG_HOME?.trim();
+  if (xdgConfigHome) return resolve(xdgConfigHome, APP_NAME);
+
+  return resolve(homeDir, `.${APP_NAME}`);
+}
+
+const DATA_DIR = resolveDataDir();
+const DB_PATH = resolve(DATA_DIR, "storage.sqlite");
 
 const rl = createInterface({
   input: process.stdin,
@@ -35,9 +51,7 @@ function ask(question) {
 }
 
 function generateSecretDigest(input) {
-  // Use bcrypt with a salt round of 10 to match login/route.ts expectations
-  // and resolve CodeQL js/insufficient-password-hash warning.
-  return bcrypt.hashSync(input, 10);
+  return bcrypt.hashSync(input, BCRYPT_SALT_ROUNDS);
 }
 
 console.log("\n🔑 OmniRoute — Password Reset\n");
@@ -62,7 +76,9 @@ async function main() {
   const db = new Database(DB_PATH);
 
   // Check current settings
-  const row = db.prepare("SELECT value FROM settings WHERE key = 'password'").get();
+  const row = db
+    .prepare("SELECT value FROM key_value WHERE namespace = 'settings' AND key = 'password'")
+    .get();
 
   if (row) {
     console.log("ℹ️  A password is currently set.");
@@ -90,19 +106,15 @@ async function main() {
 
   const hashed = generateSecretDigest(password);
 
-  // Upsert the password
-  const stmt = db.prepare(`
-    INSERT INTO settings (key, value) VALUES ('password', ?)
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value
-  `);
-  stmt.run(hashed);
-
-  // Also ensure requireLogin is true
-  const loginStmt = db.prepare(`
-    INSERT INTO settings (key, value) VALUES ('requireLogin', 'true')
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value
-  `);
-  loginStmt.run();
+  const upsert = db.prepare(
+    "INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES ('settings', ?, ?)"
+  );
+  const tx = db.transaction(() => {
+    upsert.run("password", JSON.stringify(hashed));
+    upsert.run("requireLogin", JSON.stringify(true));
+    upsert.run("setupComplete", JSON.stringify(true));
+  });
+  tx();
 
   db.close();
   rl.close();

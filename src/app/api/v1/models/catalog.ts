@@ -712,6 +712,9 @@ export async function getUnifiedModelsResponse(
             ...(apiFormat !== "chat-completions" ? { api_format: apiFormat } : {}),
             ...(modelType === "audio" ? { subtype: "transcription" } : {}),
             ...(sm.inputTokenLimit ? { context_length: sm.inputTokenLimit } : {}),
+            ...(typeof sm.outputTokenLimit === "number"
+              ? { max_output_tokens: sm.outputTokenLimit }
+              : {}),
             ...(endpoints.length > 1 || !endpoints.includes("chat")
               ? { supported_endpoints: endpoints }
               : {}),
@@ -746,6 +749,9 @@ export async function getUnifiedModelsResponse(
               type: "audio",
               subtype: "speech",
               ...(sm.inputTokenLimit ? { context_length: sm.inputTokenLimit } : {}),
+              ...(typeof sm.outputTokenLimit === "number"
+                ? { max_output_tokens: sm.outputTokenLimit }
+                : {}),
               ...(endpoints.length > 1 || !endpoints.includes("chat")
                 ? { supported_endpoints: endpoints }
                 : {}),
@@ -1006,6 +1012,9 @@ export async function getUnifiedModelsResponse(
             ...(typeof model.inputTokenLimit === "number"
               ? { context_length: model.inputTokenLimit }
               : {}),
+            ...(typeof (model as any).outputTokenLimit === "number"
+              ? { max_output_tokens: (model as any).outputTokenLimit }
+              : {}),
             ...(visionFields || {}),
           });
 
@@ -1030,6 +1039,9 @@ export async function getUnifiedModelsResponse(
               ...(modelType ? { type: modelType } : {}),
               ...(typeof model.inputTokenLimit === "number"
                 ? { context_length: model.inputTokenLimit }
+                : {}),
+              ...(typeof (model as any).outputTokenLimit === "number"
+                ? { max_output_tokens: (model as any).outputTokenLimit }
                 : {}),
               ...(providerVisionFields || {}),
             });

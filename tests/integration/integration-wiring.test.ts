@@ -238,6 +238,7 @@ describe("API Routes — dashboard and tool consumers", () => {
     assert.ok(consoleLogger, "ConsoleLogViewer should exist");
     assert.ok(activeRequests, "ActiveRequestsPanel should exist");
     assert.match(logsPage, /RequestLoggerV2/);
+    assert.match(logsPage, /EmailPrivacyToggle/);
     assert.match(logsPage, /ProxyLogger/);
     assert.match(logsPage, /ConsoleLogViewer/);
     assert.match(logsPage, /ActiveRequestsPanel/);
@@ -245,9 +246,14 @@ describe("API Routes — dashboard and tool consumers", () => {
     assert.match(logsPage, /\/api\/logs\/export/);
     assert.match(requestLogger, /\/api\/usage\/call-logs/);
     assert.match(requestLogger, /\/api\/logs\/detail/);
+    assert.match(requestLogger, /useEmailPrivacyStore/);
+    assert.match(requestLogger, /maskAccount\(log\.account, emailsVisible\)/);
+    assert.match(requestLogger, /emailsVisible=\{emailsVisible\}/);
     assert.match(proxyLogger, /\/api\/usage\/proxy-logs/);
     assert.match(consoleLogger, /\/api\/logs\/console/);
     assert.match(activeRequests, /\/api\/logs\/active/);
+    assert.match(activeRequests, /useEmailPrivacyStore/);
+    assert.match(activeRequests, /maskAccount\(row\.account, emailsVisible\)/);
     assertRouteMethods("src/app/api/logs/active/route.ts", ["GET"]);
     assertRouteMethods("src/app/api/logs/console/route.ts", ["GET"]);
     assertRouteMethods("src/app/api/logs/detail/route.ts", ["GET", "POST"]);

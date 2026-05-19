@@ -15,6 +15,7 @@ import {
   formatDuration,
   maskSegment,
   maskAccount,
+  stableAccountSuffix,
   formatApiKeyLabel,
 } from "@/shared/utils/formatting";
 import useEmailPrivacyStore from "@/store/emailPrivacyStore";
@@ -429,7 +430,7 @@ export default function RequestLoggerV2() {
           <option value="">{t("allAccounts")}</option>
           {uniqueAccounts.map((a) => (
             <option key={a} value={a}>
-              {a}
+              {emailsVisible ? a : `${maskAccount(a, false)} · #${stableAccountSuffix(a)}`}
             </option>
           ))}
         </select>
@@ -692,6 +693,7 @@ export default function RequestLoggerV2() {
                   const isError = log.status >= 400;
                   const cacheSourceMeta = getCacheSourceMeta(log.cacheSource);
                   const isSemanticCache = cacheSourceMeta.key === "semantic";
+                  const accountLabel = maskAccount(log.account, emailsVisible);
 
                   return (
                     <tr
@@ -772,9 +774,9 @@ export default function RequestLoggerV2() {
                       {visibleColumns.account && (
                         <td
                           className="px-3 py-2 text-text-muted truncate max-w-[120px]"
-                          title={log.account}
+                          title={accountLabel}
                         >
-                          {maskAccount(log.account, emailsVisible)}
+                          {accountLabel}
                         </td>
                       )}
                       {visibleColumns.apiKey && (
@@ -874,6 +876,7 @@ export default function RequestLoggerV2() {
           detail={detailData}
           loading={detailLoading}
           debugEnabled={detailLoggingEnabled}
+          emailsVisible={emailsVisible}
           onClose={closeDetail}
           onCopy={copyToClipboard}
         />

@@ -17,6 +17,7 @@ import {
   rememberResponseConversationState,
   rememberResponseFunctionCalls,
 } from "../../open-sse/services/responsesToolCallState.ts";
+import { sanitizeReasoningEffortForProvider } from "../../open-sse/executors/base.ts";
 import {
   DEFAULT_THINKING_CONFIG,
   setThinkingBudgetConfig,
@@ -920,6 +921,61 @@ test("CodexExecutor.transformRequest keeps gpt-5.5 as the model and applies xhig
 
   assert.equal(result.model, "gpt-5.5");
   assert.equal(result.reasoning.effort, "xhigh");
+});
+
+test("CodexExecutor.transformRequest keeps GPT 5.3 Codex reasoning in Responses shape", () => {
+  const executor = new CodexExecutor();
+  const transformed = executor.transformRequest(
+    "gpt-5.3-codex",
+    {
+      model: "gpt-5.3-codex",
+      input: [],
+      reasoning_effort: "high",
+    },
+    true,
+    {
+      requestEndpointPath: "/responses",
+    }
+  );
+  const sanitized = sanitizeReasoningEffortForProvider(
+    transformed,
+    "codex",
+    "gpt-5.3-codex",
+    null
+  ) as Record<string, unknown>;
+  const reasoning = getRecord(sanitized.reasoning);
+
+  assert.equal(sanitized.model, "gpt-5.3-codex");
+  assert.equal(reasoning.effort, "high");
+  assert.equal(sanitized.reasoning_effort, undefined);
+});
+
+test("CodexExecutor.transformRequest keeps GPT 5.4 Mini reasoning downgrade in Responses shape", () => {
+  const executor = new CodexExecutor();
+  const transformed = executor.transformRequest(
+    "gpt-5.4-mini",
+    {
+      model: "gpt-5.4-mini",
+      input: [],
+      reasoning: { effort: "xhigh", summary: "auto" },
+    },
+    true,
+    {
+      requestEndpointPath: "/responses",
+    }
+  );
+  const sanitized = sanitizeReasoningEffortForProvider(
+    transformed,
+    "codex",
+    "gpt-5.4-mini",
+    null
+  ) as Record<string, unknown>;
+  const reasoning = getRecord(sanitized.reasoning);
+
+  assert.equal(sanitized.model, "gpt-5.4-mini");
+  assert.equal(reasoning.effort, "high");
+  assert.equal(reasoning.summary, "auto");
+  assert.equal(sanitized.reasoning_effort, undefined);
 });
 
 test("CodexExecutor.transformRequest merges Codex installation metadata", () => {

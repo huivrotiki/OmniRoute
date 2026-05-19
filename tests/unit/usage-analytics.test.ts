@@ -28,6 +28,24 @@ async function resetStorage() {
   clearPendingRequests();
 }
 
+async function withPrepareFailure(match: string, fn: () => Promise<void>) {
+  const db = core.getDbInstance();
+  const originalPrepare = db.prepare.bind(db);
+
+  db.prepare = (sql, ...args) => {
+    if (String(sql).includes(match)) {
+      throw new Error("full history scan should not run");
+    }
+    return originalPrepare(sql, ...args);
+  };
+
+  try {
+    await fn();
+  } finally {
+    db.prepare = originalPrepare;
+  }
+}
+
 test.beforeEach(async () => {
   await resetStorage();
 });
@@ -277,6 +295,23 @@ test("getUsageStats aggregates totals, buckets, pending requests, and cost break
   assert.equal(stats.last10Minutes.length, 10);
   const recentBucketTotal = stats.last10Minutes.reduce((sum, bucket) => sum + bucket.requests, 0);
   assert.equal(recentBucketTotal, 1);
+});
+
+test("getUsageStats avoids loading the entire usage_history table", async () => {
+  await usageHistory.saveRequestUsage({
+    provider: "provider-a",
+    model: "model-a",
+    tokens: { input: 10, output: 5 },
+    success: true,
+    timestamp: new Date().toISOString(),
+  });
+
+  await withPrepareFailure("SELECT * FROM usage_history ORDER BY timestamp ASC", async () => {
+    const stats = await usageStats.getUsageStats();
+    assert.equal(stats.totalRequests, 1);
+    assert.equal(stats.totalPromptTokens, 10);
+    assert.equal(stats.totalCompletionTokens, 5);
+  });
 });
 
 test("getUsageStats groups renamed API key usage by stable ID", async () => {

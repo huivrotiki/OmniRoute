@@ -187,6 +187,15 @@ const LOCALE_SPECS = [
     docsName: "Български",
   },
   {
+    code: "bn",
+    googleTl: "bn",
+    label: "BN",
+    flag: "🇧🇩",
+    languageName: "বাংলা",
+    readmeName: "বাংলা",
+    docsName: "বাংলা",
+  },
+  {
     code: "da",
     googleTl: "da",
     label: "DA",
@@ -203,6 +212,24 @@ const LOCALE_SPECS = [
     languageName: "Suomi",
     readmeName: "Suomi",
     docsName: "Suomi",
+  },
+  {
+    code: "fa",
+    googleTl: "fa",
+    label: "FA",
+    flag: "🇮🇷",
+    languageName: "فارسی",
+    readmeName: "فارسی",
+    docsName: "فارسی",
+  },
+  {
+    code: "gu",
+    googleTl: "gu",
+    label: "GU",
+    flag: "🇮🇳",
+    languageName: "ગુજરાતી",
+    readmeName: "ગુજરાતી",
+    docsName: "ગુજરાતી",
   },
   {
     code: "he",
@@ -232,6 +259,15 @@ const LOCALE_SPECS = [
     docsName: "Bahasa Indonesia",
   },
   {
+    code: "in",
+    googleTl: "id",
+    label: "IN",
+    flag: "🇮🇩",
+    languageName: "Bahasa Indonesia (Alt)",
+    readmeName: "Bahasa Indonesia (Alt)",
+    docsName: "Bahasa Indonesia (Alt)",
+  },
+  {
     code: "ko",
     googleTl: "ko",
     label: "KO",
@@ -248,6 +284,15 @@ const LOCALE_SPECS = [
     languageName: "Bahasa Melayu",
     readmeName: "Bahasa Melayu",
     docsName: "Bahasa Melayu",
+  },
+  {
+    code: "mr",
+    googleTl: "mr",
+    label: "MR",
+    flag: "🇮🇳",
+    languageName: "मराठी",
+    readmeName: "मराठी",
+    docsName: "मराठी",
   },
   {
     code: "nl",
@@ -313,6 +358,33 @@ const LOCALE_SPECS = [
     docsName: "Svenska",
   },
   {
+    code: "sw",
+    googleTl: "sw",
+    label: "SW",
+    flag: "🇰🇪",
+    languageName: "Kiswahili",
+    readmeName: "Kiswahili",
+    docsName: "Kiswahili",
+  },
+  {
+    code: "ta",
+    googleTl: "ta",
+    label: "TA",
+    flag: "🇮🇳",
+    languageName: "தமிழ்",
+    readmeName: "தமிழ்",
+    docsName: "தமிழ்",
+  },
+  {
+    code: "te",
+    googleTl: "te",
+    label: "TE",
+    flag: "🇮🇳",
+    languageName: "తెలుగు",
+    readmeName: "తెలుగు",
+    docsName: "తెలుగు",
+  },
+  {
     code: "phi",
     googleTl: "tl",
     label: "PHI",
@@ -330,10 +402,19 @@ const LOCALE_SPECS = [
     readmeName: "Čeština",
     docsName: "Čeština",
   },
+  {
+    code: "ur",
+    googleTl: "ur",
+    label: "UR",
+    flag: "🇵🇰",
+    languageName: "اردو",
+    readmeName: "اردو",
+    docsName: "اردو",
+  },
 ];
 
 const EXISTING_README_CODES = new Set(["pt-BR", "es", "fr", "it", "ru", "zh-CN", "de"]);
-const RTL_LOCALES = new Set(["ar", "he"]);
+const RTL_LOCALES = new Set(["ar", "fa", "he", "ur"]);
 
 const URL_MAX_TEXT_LENGTH = 1800;
 const DELIMITER = "\n__OMNIROUTE_I18N_SEPARATOR__\n";

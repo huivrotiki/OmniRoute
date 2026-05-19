@@ -781,7 +781,7 @@ test("Batch processor keeps cancelled status for in-flight batches", async () =>
       method: "POST",
       url: "/v1/chat/completions",
       body: {
-        model: "openai/gpt-4o-mini",
+        model: "openai/gpt-4.1",
         messages: [{ role: "user", content: "cancel me" }],
       },
     }),

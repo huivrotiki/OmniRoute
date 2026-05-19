@@ -500,8 +500,8 @@ REQUEST_TIMEOUT_MS (global override)
 │   ├── FETCH_CONNECT_TIMEOUT_MS (independent, default: 30000)
 │   └── FETCH_KEEPALIVE_TIMEOUT_MS (independent, default: 4000)
 ├─→ STREAM_IDLE_TIMEOUT_MS (inherits from REQUEST_TIMEOUT_MS, default: 600000)
-└─→ API_BRIDGE_PROXY_TIMEOUT_MS (inherits from REQUEST_TIMEOUT_MS, default: 30000)
-    ├─→ API_BRIDGE_SERVER_REQUEST_TIMEOUT_MS (derived, default: 300000)
+└─→ API_BRIDGE_PROXY_TIMEOUT_MS (inherits from REQUEST_TIMEOUT_MS, default: 600000)
+    ├─→ API_BRIDGE_SERVER_REQUEST_TIMEOUT_MS (derived, default: 600000)
     ├── API_BRIDGE_SERVER_HEADERS_TIMEOUT_MS (default: 60000)
     ├── API_BRIDGE_SERVER_KEEPALIVE_TIMEOUT_MS (default: 5000)
     └── API_BRIDGE_SERVER_SOCKET_TIMEOUT_MS (default: 0 = disabled)
@@ -517,8 +517,8 @@ REQUEST_TIMEOUT_MS (global override)
 | `FETCH_CONNECT_TIMEOUT_MS`               | `30000`              | TCP connection establishment timeout.                                                       |
 | `FETCH_KEEPALIVE_TIMEOUT_MS`             | `4000`               | Keep-alive socket idle timeout.                                                             |
 | `TLS_CLIENT_TIMEOUT_MS`                  | = `FETCH_TIMEOUT_MS` | TLS fingerprint proxy (wreq-js) timeout.                                                    |
-| `API_BRIDGE_PROXY_TIMEOUT_MS`            | `30000`              | Proxy hop timeout for `/v1` bridge requests.                                                |
-| `API_BRIDGE_SERVER_REQUEST_TIMEOUT_MS`   | `300000`             | Overall server request timeout for the bridge.                                              |
+| `API_BRIDGE_PROXY_TIMEOUT_MS`            | `600000`             | Proxy hop timeout for `/v1` bridge requests.                                                |
+| `API_BRIDGE_SERVER_REQUEST_TIMEOUT_MS`   | `600000`             | Overall server request timeout for the bridge.                                              |
 | `API_BRIDGE_SERVER_HEADERS_TIMEOUT_MS`   | `60000`              | Time to send response headers via the bridge.                                               |
 | `API_BRIDGE_SERVER_KEEPALIVE_TIMEOUT_MS` | `5000`               | Bridge keep-alive idle timeout.                                                             |
 | `API_BRIDGE_SERVER_SOCKET_TIMEOUT_MS`    | `0`                  | Raw socket timeout (0 = disabled).                                                          |
@@ -789,26 +789,26 @@ Limits and safety knobs applied when the Skills framework (`src/lib/skills/`) ex
 
 Provider quota endpoints, network tunnels (Tailscale, Ngrok, MITM debug proxy), the 1Proxy egress pool, database backups and small per-feature overrides referenced by the executor layer or scripts.
 
-| Variable                         | Default                               | Source File                                         | Description                                                                 |
-| -------------------------------- | ------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------- |
-| `REDIS_URL`                      | `redis://localhost:6379`              | `src/shared/utils/rateLimiter.ts`                   | Redis connection string for the rate limiter backend.                       |
-| `ALIBABA_CODING_PLAN_HOST`       | _(production host)_                   | `open-sse/services/bailianQuotaFetcher.ts`          | Override the host used to fetch Alibaba Bailian coding-plan quotas.         |
-| `ALIBABA_CODING_PLAN_QUOTA_URL`  | derived from host                     | `open-sse/services/bailianQuotaFetcher.ts`          | Full quota URL override for Alibaba Bailian.                                |
-| `CONTEXT_RESERVE_TOKENS`         | `1024`                                | `open-sse/services/contextManager.ts`               | Tokens reserved for completion output when computing prompt budgets.        |
-| `MODEL_ALIAS_COMPAT_ENABLED`     | enabled                               | `open-sse/services/model.ts`                        | Toggle the legacy model-alias compatibility layer used by older clients.    |
-| `COMMAND_CODE_CALLBACK_PORT`     | _(unset)_                             | `src/app/api/providers/command-code/auth/shared.ts` | Local port used for OAuth-style callbacks from the Command Code CLI helper. |
-| `MITM_LOCAL_PORT`                | `443`                                 | `src/mitm/server.cjs`                               | Local bind port for the MITM debug proxy.                                   |
-| `MITM_DISABLE_TLS_VERIFY`        | `0`                                   | `src/mitm/server.cjs`                               | Set `1` to disable upstream TLS verification (development only).            |
-| `ONEPROXY_ENABLED`               | `true`                                | `src/lib/oneproxySync.ts`                           | Enable the 1Proxy egress pool sync.                                         |
-| `ONEPROXY_API_URL`               | `https://1proxy-api.aitradepulse.com` | `src/lib/oneproxySync.ts`                           | 1Proxy service API URL override.                                            |
-| `ONEPROXY_MAX_PROXIES`           | `500`                                 | `src/lib/oneproxySync.ts`                           | Maximum proxies imported per sync.                                          |
-| `ONEPROXY_MIN_QUALITY_THRESHOLD` | `50`                                  | `src/lib/oneproxySync.ts`                           | Minimum quality score for imported proxies.                                 |
-| `TAILSCALE_BIN`                  | _(auto-detect)_                       | `src/lib/tailscaleTunnel.ts`                        | Explicit path to the `tailscale` binary.                                    |
-| `TAILSCALED_BIN`                 | _(auto-detect)_                       | `src/lib/tailscaleTunnel.ts`                        | Explicit path to the `tailscaled` daemon binary.                            |
-| `NGROK_AUTHTOKEN`                | _(unset)_                             | `src/lib/ngrokTunnel.ts`                            | Authenticates outbound ngrok tunnels.                                       |
-| `DB_BACKUP_MAX_FILES`            | `20`                                  | `src/lib/db/backup.ts`                              | Maximum SQLite backup files retained on disk.                               |
-| `DB_BACKUP_RETENTION_DAYS`       | `0`                                   | `src/lib/db/backup.ts`                              | Maximum age (days) of retained backups. `0` disables age-based pruning.     |
-| `OMNIROUTE_TLS_PROXY_URL`        | _(unset)_                             | `open-sse/services/chatgptTlsClient.ts`             | Override the TLS sidecar URL for tests. Production should leave unset.      |
+| Variable                         | Default                               | Source File                                         | Description                                                                                                                                                               |
+| -------------------------------- | ------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `REDIS_URL`                      | _(unset)_                             | `src/shared/utils/rateLimiter.ts`                   | Optional Redis connection string for the distributed rate limiter backend. When unset, OmniRoute uses process-local in-memory rate limiting and does not probe localhost. |
+| `ALIBABA_CODING_PLAN_HOST`       | _(production host)_                   | `open-sse/services/bailianQuotaFetcher.ts`          | Override the host used to fetch Alibaba Bailian coding-plan quotas.                                                                                                       |
+| `ALIBABA_CODING_PLAN_QUOTA_URL`  | derived from host                     | `open-sse/services/bailianQuotaFetcher.ts`          | Full quota URL override for Alibaba Bailian.                                                                                                                              |
+| `CONTEXT_RESERVE_TOKENS`         | `1024`                                | `open-sse/services/contextManager.ts`               | Tokens reserved for completion output when computing prompt budgets.                                                                                                      |
+| `MODEL_ALIAS_COMPAT_ENABLED`     | enabled                               | `open-sse/services/model.ts`                        | Toggle the legacy model-alias compatibility layer used by older clients.                                                                                                  |
+| `COMMAND_CODE_CALLBACK_PORT`     | _(unset)_                             | `src/app/api/providers/command-code/auth/shared.ts` | Local port used for OAuth-style callbacks from the Command Code CLI helper.                                                                                               |
+| `MITM_LOCAL_PORT`                | `443`                                 | `src/mitm/server.cjs`                               | Local bind port for the MITM debug proxy.                                                                                                                                 |
+| `MITM_DISABLE_TLS_VERIFY`        | `0`                                   | `src/mitm/server.cjs`                               | Set `1` to disable upstream TLS verification (development only).                                                                                                          |
+| `ONEPROXY_ENABLED`               | `true`                                | `src/lib/oneproxySync.ts`                           | Enable the 1Proxy egress pool sync.                                                                                                                                       |
+| `ONEPROXY_API_URL`               | `https://1proxy-api.aitradepulse.com` | `src/lib/oneproxySync.ts`                           | 1Proxy service API URL override.                                                                                                                                          |
+| `ONEPROXY_MAX_PROXIES`           | `500`                                 | `src/lib/oneproxySync.ts`                           | Maximum proxies imported per sync.                                                                                                                                        |
+| `ONEPROXY_MIN_QUALITY_THRESHOLD` | `50`                                  | `src/lib/oneproxySync.ts`                           | Minimum quality score for imported proxies.                                                                                                                               |
+| `TAILSCALE_BIN`                  | _(auto-detect)_                       | `src/lib/tailscaleTunnel.ts`                        | Explicit path to the `tailscale` binary.                                                                                                                                  |
+| `TAILSCALED_BIN`                 | _(auto-detect)_                       | `src/lib/tailscaleTunnel.ts`                        | Explicit path to the `tailscaled` daemon binary.                                                                                                                          |
+| `NGROK_AUTHTOKEN`                | _(unset)_                             | `src/lib/ngrokTunnel.ts`                            | Authenticates outbound ngrok tunnels.                                                                                                                                     |
+| `DB_BACKUP_MAX_FILES`            | `20`                                  | `src/lib/db/backup.ts`                              | Maximum SQLite backup files retained on disk.                                                                                                                             |
+| `DB_BACKUP_RETENTION_DAYS`       | `0`                                   | `src/lib/db/backup.ts`                              | Maximum age (days) of retained backups. `0` disables age-based pruning.                                                                                                   |
+| `OMNIROUTE_TLS_PROXY_URL`        | _(unset)_                             | `open-sse/services/chatgptTlsClient.ts`             | Override the TLS sidecar URL for tests. Production should leave unset.                                                                                                    |
 
 ---
 

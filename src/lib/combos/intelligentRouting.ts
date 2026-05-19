@@ -13,6 +13,10 @@ export type IntelligentRoutingWeights = {
   taskFit: number;
   stability: number;
   tierPriority: number;
+  tierAffinity: number;
+  specificityMatch: number;
+  contextAffinity: number;
+  resetWindowAffinity: number;
 };
 
 export type IntelligentRoutingConfig = {
@@ -32,13 +36,17 @@ export type IntelligentProviderScore = {
 };
 
 export const DEFAULT_INTELLIGENT_WEIGHTS: IntelligentRoutingWeights = {
-  quota: 0.2,
-  health: 0.25,
-  costInv: 0.2,
-  latencyInv: 0.15,
-  taskFit: 0.1,
+  quota: 0.16,
+  health: 0.2,
+  costInv: 0.16,
+  latencyInv: 0.12,
+  taskFit: 0.08,
   stability: 0.05,
   tierPriority: 0.05,
+  tierAffinity: 0.05,
+  specificityMatch: 0.05,
+  contextAffinity: 0.08,
+  resetWindowAffinity: 0,
 };
 
 export const MODE_PACK_OPTIONS = [
@@ -63,6 +71,10 @@ export const FACTOR_LABELS: Record<keyof IntelligentRoutingWeights, string> = {
   taskFit: "Task Fit",
   stability: "Stability",
   tierPriority: "Tier",
+  tierAffinity: "Tier Affinity",
+  specificityMatch: "Specificity",
+  contextAffinity: "Context Affinity",
+  resetWindowAffinity: "Reset Window",
 };
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -125,6 +137,15 @@ export function normalizeIntelligentRoutingConfig(config: unknown): IntelligentR
       stability: toFiniteNumber(rawWeights.stability) ?? DEFAULT_INTELLIGENT_WEIGHTS.stability,
       tierPriority:
         toFiniteNumber(rawWeights.tierPriority) ?? DEFAULT_INTELLIGENT_WEIGHTS.tierPriority,
+      tierAffinity:
+        toFiniteNumber(rawWeights.tierAffinity) ?? DEFAULT_INTELLIGENT_WEIGHTS.tierAffinity,
+      specificityMatch:
+        toFiniteNumber(rawWeights.specificityMatch) ?? DEFAULT_INTELLIGENT_WEIGHTS.specificityMatch,
+      contextAffinity:
+        toFiniteNumber(rawWeights.contextAffinity) ?? DEFAULT_INTELLIGENT_WEIGHTS.contextAffinity,
+      resetWindowAffinity:
+        toFiniteNumber(rawWeights.resetWindowAffinity) ??
+        DEFAULT_INTELLIGENT_WEIGHTS.resetWindowAffinity,
     },
     routerStrategy:
       typeof configRecord.routerStrategy === "string" &&

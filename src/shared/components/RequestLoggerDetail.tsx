@@ -6,7 +6,7 @@ import {
   getHttpStatusStyle as getStatusStyle,
   getProtocolColor,
 } from "@/shared/constants/colors";
-import { formatDuration, formatApiKeyLabel } from "@/shared/utils/formatting";
+import { formatDuration, formatApiKeyLabel, maskAccount } from "@/shared/utils/formatting";
 
 // ─── Payload Code Block ─────────────────────────────────────────────────────
 
@@ -52,6 +52,7 @@ export default function RequestLoggerDetail({
   detail,
   loading,
   debugEnabled,
+  emailsVisible = false,
   onClose,
   onCopy,
 }) {
@@ -170,6 +171,7 @@ export default function RequestLoggerDetail({
     cacheSource === "semantic"
       ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
       : "bg-sky-500/20 text-sky-700 dark:text-sky-300 border-sky-500/30";
+  const accountLabel = maskAccount(detail?.account || log.account, emailsVisible);
 
   return (
     <div
@@ -249,15 +251,18 @@ export default function RequestLoggerDetail({
                 <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-400 text-xs font-bold">
                   Cache Write: {formatTokenValue(tokenStats.cacheWrite)}
                 </span>
-                {tokenStats.compressed != null && tokenStats.compressed > 0 && (() => {
-                  const fromTokens = tokenStats.totalIn + tokenStats.compressed;
-                  const pct = Math.round((tokenStats.compressed / fromTokens) * 100);
-                  return (
-                    <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-700 dark:text-purple-300 text-xs font-bold">
-                      Compressed: {fromTokens.toLocaleString()} → {tokenStats.totalIn.toLocaleString()} (-{pct}%)
-                    </span>
-                  );
-                })()}
+                {tokenStats.compressed != null &&
+                  tokenStats.compressed > 0 &&
+                  (() => {
+                    const fromTokens = tokenStats.totalIn + tokenStats.compressed;
+                    const pct = Math.round((tokenStats.compressed / fromTokens) * 100);
+                    return (
+                      <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-700 dark:text-purple-300 text-xs font-bold">
+                        Compressed: {fromTokens.toLocaleString()} →{" "}
+                        {tokenStats.totalIn.toLocaleString()} (-{pct}%)
+                      </span>
+                    );
+                  })()}
               </div>
             </div>
             <div>
@@ -328,7 +333,9 @@ export default function RequestLoggerDetail({
               <div className="text-[10px] text-text-muted uppercase tracking-wider mb-1">
                 Account
               </div>
-              <div className="text-sm font-medium">{detail?.account || log.account || "-"}</div>
+              <div className="text-sm font-medium" title={accountLabel}>
+                {accountLabel}
+              </div>
             </div>
             <div>
               <div className="text-[10px] text-text-muted uppercase tracking-wider mb-1">
