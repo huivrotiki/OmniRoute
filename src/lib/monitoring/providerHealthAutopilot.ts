@@ -147,6 +147,13 @@ function hashPreconditions(input: unknown): string {
   return createHash("sha256").update(stableStringify(input)).digest("hex").slice(0, 16);
 }
 
+function stableEvidenceForHash(evidence: JsonRecord): JsonRecord {
+  const stable: JsonRecord = { ...evidence };
+  delete stable.remainingMs;
+  delete stable.retryAfterMs;
+  return stable;
+}
+
 function targetMatches(left: ProviderAutopilotTarget, right: ProviderAutopilotTarget): boolean {
   return (
     left.provider === right.provider &&
@@ -168,7 +175,11 @@ function action(
     risk,
     requiresConfirmation: true,
     target,
-    preconditionsHash: hashPreconditions({ type, target, evidence }),
+    preconditionsHash: hashPreconditions({
+      type,
+      target,
+      evidence: stableEvidenceForHash(evidence),
+    }),
   };
 }
 
