@@ -734,7 +734,7 @@ export default function ProviderLimits() {
         <div className="text-center py-12">
           <span className="material-symbols-outlined text-[64px] opacity-15">cloud_off</span>
           <h3 className="mt-4 text-lg font-semibold text-text-main">{t("noProviders")}</h3>
-          <p className="mt-2 text-sm text-text-muted max-w-[400px] mx-auto">
+          <p className="mt-2 text-sm text-text-muted max-w-100 mx-auto">
             {t("connectProvidersForQuota")}
           </p>
         </div>
@@ -1043,14 +1043,14 @@ export default function ProviderLimits() {
                       </span>
                     ) : null}
                     <span
-                      className="text-[13px] font-bold tabular-nums min-w-[40px] text-right"
+                      className="text-[13px] font-bold tabular-nums min-w-10 text-right"
                       style={{ color: colors.text }}
                     >
                       {pct}%
                     </span>
                   </div>
                 </div>
-                <div className="h-2 rounded-sm bg-black/[0.06] dark:bg-white/[0.06] overflow-hidden">
+                <div className="h-2 rounded-sm bg-black/6 dark:bg-white/6 overflow-hidden">
                   <div
                     className="h-full rounded-sm transition-[width] duration-300 ease-out"
                     style={{ width: `${Math.min(pct, 100)}%`, background: colors.bar }}
@@ -1112,7 +1112,7 @@ export default function ProviderLimits() {
                       toggleRow(conn.id);
                     }
                   }}
-                  className="w-full text-left items-center px-3 py-3 transition-[background] duration-150 hover:bg-black/[0.03] dark:hover:bg-white/[0.02] cursor-pointer"
+                  className="w-full text-left items-center px-3 py-3 transition-[background] duration-150 hover:bg-black/3 dark:hover:bg-white/2 cursor-pointer"
                   style={{
                     display: "grid",
                     gridTemplateColumns:
@@ -1184,7 +1184,7 @@ export default function ProviderLimits() {
                     ) : error ? (
                       <div className="flex items-center gap-1.5 text-xs text-red-500">
                         <span className="material-symbols-outlined text-[14px]">error</span>
-                        <span className="overflow-hidden text-ellipsis whitespace-nowrap max-w-[300px]">
+                        <span className="overflow-hidden text-ellipsis whitespace-nowrap max-w-75">
                           {error}
                         </span>
                       </div>
@@ -1255,12 +1255,12 @@ export default function ProviderLimits() {
                               "No quota windows are available for this account yet."
                             )
                       }
-                      className={`block w-full max-w-[100px] truncate text-center px-2 py-1 rounded-md border text-[11px] font-medium tabular-nums transition-colors ${
+                      className={`block w-full max-w-25 truncate text-center px-2 py-1 rounded-md border text-[11px] font-medium tabular-nums transition-colors ${
                         !connectionHasWindows ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
                       } ${
                         hasOverrides
                           ? "border-primary/40 text-primary bg-primary/5"
-                          : "border-border text-text-muted hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+                          : "border-border text-text-muted hover:bg-black/4 dark:hover:bg-white/4"
                       }`}
                     >
                       {cutoffLabel}
@@ -1327,7 +1327,7 @@ export default function ProviderLimits() {
                               setCutoffModalWindows(connectionWindows);
                               setCutoffModalConn(conn);
                             }}
-                            className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-md border border-border bg-bg-subtle hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                            className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-md border border-border bg-bg-subtle hover:bg-black/4 dark:hover:bg-white/4 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                           >
                             <span className="material-symbols-outlined text-[14px]">tune</span>
                             {tr("editCutoffs", "Edit cutoffs")}
@@ -1336,7 +1336,7 @@ export default function ProviderLimits() {
                             type="button"
                             disabled={isLoading}
                             onClick={() => refreshProvider(conn.id, conn.provider)}
-                            className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-md border border-border bg-bg-subtle hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                            className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-md border border-border bg-bg-subtle hover:bg-black/4 dark:hover:bg-white/4 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                           >
                             <span
                               className={`material-symbols-outlined text-[14px] ${isLoading ? "animate-spin" : ""}`}
@@ -1362,7 +1362,7 @@ export default function ProviderLimits() {
               <div key={groupName} className="border border-border rounded-lg overflow-hidden mb-2">
                 <button
                   onClick={() => toggleGroup(groupName)}
-                  className="w-full flex items-center gap-2 px-4 py-2.5 bg-bg-subtle hover:bg-black/[0.04] dark:hover:bg-white/[0.05] transition-colors text-left border-none cursor-pointer"
+                  className="w-full flex items-center gap-2 px-4 py-2.5 bg-bg-subtle hover:bg-black/4 dark:hover:bg-white/5 transition-colors text-left border-none cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-[16px] text-text-muted">
                     {expandedGroups.has(groupName) ? "expand_less" : "expand_more"}
@@ -1373,7 +1373,7 @@ export default function ProviderLimits() {
                   <span className="text-[12px] font-semibold text-text-main uppercase tracking-wider flex-1">
                     {groupName}
                   </span>
-                  <span className="text-[11px] text-text-muted bg-black/[0.04] dark:bg-white/[0.06] px-2 py-0.5 rounded-full">
+                  <span className="text-[11px] text-text-muted bg-black/4 dark:bg-white/6 px-2 py-0.5 rounded-full">
                     {conns.length}
                   </span>
                 </button>
