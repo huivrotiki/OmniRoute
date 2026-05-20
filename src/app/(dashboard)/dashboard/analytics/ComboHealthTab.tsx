@@ -6,6 +6,9 @@ import Badge from "@/shared/components/Badge";
 import { Skeleton, Spinner } from "@/shared/components/Loading";
 import TimeRangeSelector from "@/shared/components/analytics/TimeRangeSelector";
 import type {
+  ComboForecastHorizon,
+  ComboForecastMetrics,
+  ComboForecastResponse,
   ComboHealthMetrics,
   ComboHealthResponse,
   UtilizationTimeRange,
@@ -26,6 +29,24 @@ function formatPercentOrDash(value: number | null, digits = 1) {
 
 function formatLatency(value: number) {
   return `${Math.round(value).toLocaleString()}ms`;
+}
+
+function formatUsd(value: number, digits = 2) {
+  return `$${value.toLocaleString(undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })}`;
+}
+
+function formatCompactNumber(value: number) {
+  return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
+
+function getRiskVariant(risk: ComboForecastMetrics["quotaRisk"]["level"]) {
+  if (risk === "critical") return "error" as const;
+  if (risk === "high" || risk === "medium") return "warning" as const;
+  if (risk === "low") return "success" as const;
+  return "default" as const;
 }
 
 function getTrendMeta(trend: ComboHealthMetrics["quotaHealth"]["providers"][number]["trend"]) {
@@ -64,7 +85,7 @@ function MetricBlock({
   subValue?: string;
 }) {
   return (
-    <div className="rounded-lg border border-black/5 bg-black/[0.02] p-4 dark:border-white/5 dark:bg-white/[0.02]">
+    <div className="rounded-lg border border-black/5 bg-black/2 p-4 dark:border-white/5 dark:bg-white/2">
       <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-muted">
         <span className="material-symbols-outlined text-[16px]">{icon}</span>
         {label}
@@ -79,7 +100,7 @@ function DistributionBar({ label, value, meta }: { label: string; value: number;
   const width = `${Math.max(value * 100, value > 0 ? 6 : 0)}%`;
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-black/5 bg-black/[0.02] p-3 dark:border-white/5 dark:bg-white/[0.02]">
+    <div className="flex flex-col gap-2 rounded-lg border border-black/5 bg-black/2 p-3 dark:border-white/5 dark:bg-white/2">
       <div className="flex items-center justify-between gap-3 text-sm">
         <span className="truncate font-medium text-text-main">{label}</span>
         <span className="shrink-0 text-xs text-text-muted">{meta}</span>
@@ -91,7 +112,128 @@ function DistributionBar({ label, value, meta }: { label: string; value: number;
   );
 }
 
-function ComboHealthCard({ combo }: { combo: ComboHealthMetrics }) {
+function ComboForecastPanel({ forecast }: { forecast: ComboForecastMetrics }) {
+  const topTargets = useMemo(
+    () =>
+      [...forecast.targets]
+        .sort((left, right) => right.forecast.projectedCostUsd - left.forecast.projectedCostUsd)
+        .slice(0, 3),
+    [forecast.targets]
+  );
+
+  return (
+    <div className="border-t border-black/5 px-6 py-5 dark:border-white/5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="text-sm font-semibold text-text-main">Cost & quota forecast</div>
+          <div className="mt-1 text-xs text-text-muted">
+            Linear projection from historical combo traffic and quota snapshots.
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={getRiskVariant(forecast.quotaRisk.level)} size="sm">
+            {forecast.quotaRisk.level} quota risk
+          </Badge>
+          <Badge variant={forecast.confidence === "no_data" ? "default" : "info"} size="sm">
+            {forecast.confidence.replace("_", " ")} confidence
+          </Badge>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <MetricBlock
+          icon="payments"
+          label="Projected cost"
+          value={formatUsd(forecast.forecast.projectedCostUsd)}
+          subValue={`history ${formatUsd(forecast.history.costUsd)} · ${formatUsd(
+            forecast.history.avgDailyCostUsd
+          )}/day`}
+        />
+        <MetricBlock
+          icon="query_stats"
+          label="Projected requests"
+          value={formatCompactNumber(forecast.forecast.projectedRequests)}
+          subValue={`${formatCompactNumber(forecast.history.requests)} in selected range`}
+        />
+        <MetricBlock
+          icon="battery_alert"
+          label="Worst projected quota"
+          value={
+            forecast.quotaRisk.projectedWorstRemainingPct === null
+              ? "n/a"
+              : formatPercent(forecast.quotaRisk.projectedWorstRemainingPct, 1)
+          }
+          subValue={
+            forecast.quotaRisk.timeToExhaustDays === null
+              ? "No depletion estimate"
+              : `${forecast.quotaRisk.timeToExhaustDays.toFixed(1)}d to exhaust`
+          }
+        />
+      </div>
+
+      {topTargets.length > 0 ? (
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          {topTargets.map((target) => (
+            <div
+              key={target.executionKey}
+              className="rounded-lg border border-black/5 bg-black/2 p-4 dark:border-white/5 dark:bg-white/2"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium text-text-main">
+                    {target.label || target.model}
+                  </div>
+                  <div className="mt-1 text-xs text-text-muted">
+                    {target.provider} · traffic {formatShare(target.trafficShare)}
+                  </div>
+                </div>
+                <Badge variant={getRiskVariant(target.quota.risk)} size="sm">
+                  {target.quota.risk}
+                </Badge>
+              </div>
+              <div className="mt-3 grid gap-2 text-xs text-text-muted">
+                <div className="flex justify-between gap-3">
+                  <span>Projected cost</span>
+                  <span className="font-medium text-text-main">
+                    {formatUsd(target.forecast.projectedCostUsd)}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>Projected quota</span>
+                  <span className="font-medium text-text-main">
+                    {target.quota.projectedRemainingPct === null
+                      ? "n/a"
+                      : formatPercent(target.quota.projectedRemainingPct, 1)}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>Pricing coverage</span>
+                  <span className="font-medium text-text-main">
+                    {formatPercent(forecast.dataQuality.pricingCoveragePct, 0)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {forecast.dataQuality.notes.length > 0 ? (
+        <div className="mt-4 rounded-lg border border-black/5 bg-black/2 p-3 text-xs text-text-muted dark:border-white/5 dark:bg-white/2">
+          {forecast.dataQuality.notes.slice(0, 2).join(" · ")}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ComboHealthCard({
+  combo,
+  forecast,
+}: {
+  combo: ComboHealthMetrics;
+  forecast?: ComboForecastMetrics;
+}) {
   const sortedDistribution = useMemo(
     () =>
       [...combo.usageSkew.modelDistribution].sort(
@@ -116,7 +258,7 @@ function ComboHealthCard({ combo }: { combo: ComboHealthMetrics }) {
               {combo.models.length} models across {combo.quotaHealth.providers.length} providers
             </p>
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:min-w-[420px]">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:min-w-105">
             <MetricBlock
               icon="battery_status_good"
               label="Worst quota left"
@@ -155,7 +297,7 @@ function ComboHealthCard({ combo }: { combo: ComboHealthMetrics }) {
               return (
                 <div
                   key={provider.provider}
-                  className="rounded-lg border border-black/5 bg-black/[0.02] p-4 dark:border-white/5 dark:bg-white/[0.02]"
+                  className="rounded-lg border border-black/5 bg-black/2 p-4 dark:border-white/5 dark:bg-white/2"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -199,7 +341,7 @@ function ComboHealthCard({ combo }: { combo: ComboHealthMetrics }) {
             {sortedDistribution.map((entry) => (
               <div
                 key={entry.model}
-                className="rounded-lg border border-black/5 bg-black/[0.02] p-4 dark:border-white/5 dark:bg-white/[0.02]"
+                className="rounded-lg border border-black/5 bg-black/2 p-4 dark:border-white/5 dark:bg-white/2"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -270,7 +412,7 @@ function ComboHealthCard({ combo }: { combo: ComboHealthMetrics }) {
             {targetHealth.map((target) => (
               <div
                 key={target.executionKey}
-                className="rounded-lg border border-black/5 bg-black/[0.02] p-4 dark:border-white/5 dark:bg-white/[0.02]"
+                className="rounded-lg border border-black/5 bg-black/2 p-4 dark:border-white/5 dark:bg-white/2"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -323,6 +465,8 @@ function ComboHealthCard({ combo }: { combo: ComboHealthMetrics }) {
           </div>
         </div>
       ) : null}
+
+      {forecast ? <ComboForecastPanel forecast={forecast} /> : null}
     </Card>
   );
 }
@@ -338,7 +482,7 @@ function ComboHealthSkeleton() {
                 <Skeleton className="h-6 w-40" />
                 <Skeleton className="h-4 w-52" />
               </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:min-w-[420px]">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:min-w-105">
                 {[0, 1, 2].map((item) => (
                   <Skeleton key={item} className="h-24 rounded-lg" />
                 ))}
@@ -362,9 +506,12 @@ function ComboHealthSkeleton() {
 
 export default function ComboHealthTab() {
   const [range, setRange] = useState<UtilizationTimeRange>("24h");
+  const [horizon, setHorizon] = useState<ComboForecastHorizon>("30d");
   const [data, setData] = useState<ComboHealthResponse | null>(null);
+  const [forecastData, setForecastData] = useState<ComboForecastResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [forecastError, setForecastError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
 
   const fetchData = useCallback(
@@ -377,9 +524,14 @@ export default function ComboHealthTab() {
       setError(null);
 
       try {
-        const response = await fetch(`/api/usage/combo-health?range=${range}`, {
-          signal: controller.signal,
-        });
+        const [response, forecastResponse] = await Promise.all([
+          fetch(`/api/usage/combo-health?range=${range}`, {
+            signal: controller.signal,
+          }),
+          fetch(`/api/usage/combo-forecast?range=${range}&horizon=${horizon}`, {
+            signal: controller.signal,
+          }),
+        ]);
 
         if (!response.ok) {
           throw new Error("Failed to fetch combo health data");
@@ -388,6 +540,15 @@ export default function ComboHealthTab() {
         const result = (await response.json()) as ComboHealthResponse;
         setData(result);
         setError(null);
+
+        if (forecastResponse.ok) {
+          const forecastResult = (await forecastResponse.json()) as ComboForecastResponse;
+          setForecastData(forecastResult);
+          setForecastError(null);
+        } else {
+          setForecastData(null);
+          setForecastError("Failed to fetch combo forecast data");
+        }
       } catch (fetchError) {
         if ((fetchError as Error).name === "AbortError") {
           return;
@@ -401,7 +562,7 @@ export default function ComboHealthTab() {
         }
       }
     },
-    [range]
+    [range, horizon]
   );
 
   useEffect(() => {
@@ -411,6 +572,10 @@ export default function ComboHealthTab() {
   }, [fetchData]);
 
   const combos = data?.combos ?? [];
+  const forecastsByComboId = useMemo(
+    () => new Map((forecastData?.combos ?? []).map((forecast) => [forecast.comboId, forecast])),
+    [forecastData]
+  );
 
   const handleRetry = useCallback(() => {
     const controller = new AbortController();
@@ -426,8 +591,36 @@ export default function ComboHealthTab() {
             Monitor quota pressure, skewed model usage, and delivery performance by combo.
           </p>
         </div>
-        <TimeRangeSelector value={range} onChange={setRange} />
+        <div className="flex flex-col gap-3 sm:items-end">
+          <TimeRangeSelector value={range} onChange={setRange} />
+          <div className="flex items-center gap-1 rounded-lg border border-black/5 bg-black/2 p-1 dark:border-white/5 dark:bg-white/2">
+            {(["24h", "7d", "30d"] as ComboForecastHorizon[]).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setHorizon(value)}
+                className={cn(
+                  "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                  horizon === value
+                    ? "bg-primary text-white"
+                    : "text-text-muted hover:bg-black/5 hover:text-text-main dark:hover:bg-white/5"
+                )}
+              >
+                {value} forecast
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
+
+      {!loading && forecastError ? (
+        <Card className="border-yellow-500/20 bg-yellow-500/5 p-4">
+          <div className="flex items-center gap-2 text-sm text-yellow-700 dark:text-yellow-300">
+            <span className="material-symbols-outlined text-[18px]">warning</span>
+            {forecastError}
+          </div>
+        </Card>
+      ) : null}
 
       {loading ? <ComboHealthSkeleton /> : null}
 
@@ -476,7 +669,7 @@ export default function ComboHealthTab() {
               Combo quota snapshots and routed requests will appear here after traffic starts
               flowing.
             </div>
-            <div className="rounded-lg border border-black/5 bg-black/[0.02] p-4 dark:border-white/5 dark:bg-white/[0.02]">
+            <div className="rounded-lg border border-black/5 bg-black/2 p-4 dark:border-white/5 dark:bg-white/2">
               <p className="text-xs font-medium text-text-main">Getting started</p>
               <ul className="mt-2 text-left text-xs text-text-muted">
                 <li className="flex items-start gap-2">
@@ -515,7 +708,11 @@ export default function ComboHealthTab() {
             Tracking {combos.length} combos for {range}
           </div>
           {combos.map((combo) => (
-            <ComboHealthCard key={combo.comboId} combo={combo} />
+            <ComboHealthCard
+              key={combo.comboId}
+              combo={combo}
+              forecast={forecastsByComboId.get(combo.comboId)}
+            />
           ))}
         </div>
       ) : null}
