@@ -82,7 +82,7 @@ export async function getSettings() {
   const db = getDbInstance();
   const rows = db.prepare("SELECT key, value FROM key_value WHERE namespace = 'settings'").all();
   const settings: Record<string, unknown> = {
-    cloudEnabled: true,
+    cloudEnabled: false,
     tailscaleEnabled: false,
     tailscaleUrl: "",
     stickyRoundRobinLimit: 3,

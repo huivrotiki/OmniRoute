@@ -65,8 +65,11 @@ docs/*
 !docs/security/
 !docs/security/*.md
 docs/i18n/
+docs/i18n/**
 docs/screenshots/
+docs/screenshots/**
 docs/diagrams/exported/
+docs/diagrams/exported/**
 
 # Electron (separate build)
 electron

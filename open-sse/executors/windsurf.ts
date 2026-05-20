@@ -73,6 +73,7 @@ const MODEL_ALIAS_MAP: Record<string, string> = {
   "claude-sonnet-4.5-thinking": "MODEL_PRIVATE_3",
   "claude-sonnet-4.5": "MODEL_PRIVATE_2",
   "claude-haiku-4.5": "MODEL_PRIVATE_11",
+  "claude-3.7-sonnet-thinking": "CLAUDE_3_7_SONNET_20250219_THINKING",
   // backward-compat flat names
   "claude-4.5-opus-thinking": "MODEL_CLAUDE_4_5_OPUS_THINKING",
   "claude-4.5-opus": "MODEL_CLAUDE_4_5_OPUS",
@@ -140,9 +141,11 @@ const MODEL_ALIAS_MAP: Record<string, string> = {
   "gemini-3.0-flash-low": "MODEL_GOOGLE_GEMINI_3_0_FLASH_LOW",
   "gemini-3.0-flash-minimal": "MODEL_GOOGLE_GEMINI_3_0_FLASH_MINIMAL",
   "gemini-3.0-flash": "MODEL_GOOGLE_GEMINI_3_0_FLASH_HIGH",
+  "gemini-3.0-pro": "gemini-3-pro",
   "gemini-2.5-pro": "MODEL_GOOGLE_GEMINI_2_5_PRO",
   // ── Others ───────────────────────────────────────────────────────────────
   "deepseek-v4": "deepseek-v4",
+  "kimi-k2": "MODEL_KIMI_K2",
   "kimi-k2.6": "kimi-k2-6",
   "kimi-k2.5": "kimi-k2-5",
   "glm-5.1": "glm-5-1",

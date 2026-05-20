@@ -134,6 +134,12 @@ const tokenCache = new Map<
   }
 >();
 
+let cfClearanceTokenOverride: string | null = null;
+
+export function setCfClearanceTokenForTesting(token: string | null): void {
+  cfClearanceTokenOverride = token;
+}
+
 /**
  * Get or solve cf_clearance (with caching)
  */
@@ -143,6 +149,14 @@ export async function getCfClearanceToken(options?: {
 }): Promise<string> {
   const cacheKey = "claude-cf-clearance";
   const cached = tokenCache.get(cacheKey);
+
+  if (cfClearanceTokenOverride) {
+    tokenCache.set(cacheKey, {
+      token: cfClearanceTokenOverride,
+      expiresAt: Date.now() + 55 * 60 * 1000,
+    });
+    return cfClearanceTokenOverride;
+  }
 
   // Return cached token if still valid (5 min buffer)
   if (cached && !options?.force && cached.expiresAt > Date.now() + 5 * 60 * 1000) {

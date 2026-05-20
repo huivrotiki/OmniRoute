@@ -64,8 +64,12 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function parseMetadata(value: string | null | undefined): CommandCodeAuthMetadata | null {
+function parseMetadata(value: unknown): CommandCodeAuthMetadata | null {
   if (!value) return null;
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value as CommandCodeAuthMetadata;
+  }
+  if (typeof value !== "string") return null;
   try {
     const parsed = JSON.parse(value) as CommandCodeAuthMetadata;
     return parsed && typeof parsed === "object" ? parsed : null;
@@ -80,7 +84,7 @@ function toSafeStatus(row: AuthSessionRow): CommandCodeAuthSafeStatus {
     id: String(camel.id),
     stateHash: String(camel.stateHash),
     status: camel.status as CommandCodeAuthStatus,
-    metadata: parseMetadata(camel.metadataJson as string | null | undefined),
+    metadata: parseMetadata(camel.metadata ?? camel.metadataJson),
     createdAt: String(camel.createdAt),
     expiresAt: String(camel.expiresAt),
     receivedAt: (camel.receivedAt as string | null | undefined) ?? null,
