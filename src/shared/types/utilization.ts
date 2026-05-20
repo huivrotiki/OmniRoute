@@ -160,6 +160,163 @@ export interface ComboForecastResponse {
   combos: ComboForecastMetrics[];
 }
 
+export type ComboAutopilotSeverity = "info" | "warning" | "critical";
+export type ComboAutopilotStatus = "healthy" | "warning" | "critical";
+export type ComboAutopilotState = "healthy" | "degraded" | "down";
+
+export type ComboAutopilotIssueKind =
+  | "combo_no_targets"
+  | "combo_no_recent_traffic"
+  | "combo_low_success_rate"
+  | "target_low_success_rate"
+  | "target_last_error"
+  | "target_quota_exhausted"
+  | "target_low_quota"
+  | "forecast_quota_risk"
+  | "usage_skew_high"
+  | "provider_health_issue"
+  | "data_quality_gap";
+
+export type ComboAutopilotActionType =
+  | "open_combo_editor"
+  | "run_combo_test"
+  | "open_provider_health_autopilot"
+  | "review_quota_limits"
+  | "review_pricing";
+
+export interface ComboAutopilotTargetRef {
+  comboId: string;
+  comboName: string;
+  provider?: string;
+  connectionId?: string | null;
+  executionKey?: string;
+  model?: string;
+}
+
+export interface ComboAutopilotAction {
+  type: ComboAutopilotActionType;
+  mode: "manual";
+  label: string;
+  href?: string;
+  target: ComboAutopilotTargetRef;
+}
+
+export interface ComboAutopilotIssue {
+  id: string;
+  severity: ComboAutopilotSeverity;
+  kind: ComboAutopilotIssueKind;
+  title: string;
+  recommendation: string;
+  evidence: Record<string, unknown>;
+  target: ComboAutopilotTargetRef;
+  actions: ComboAutopilotAction[];
+}
+
+export interface ComboAutopilotCombo {
+  comboId: string;
+  comboName: string;
+  strategy: string;
+  state: ComboAutopilotState;
+  score: number;
+  signals: {
+    totalRequests: number;
+    successRate: number;
+    avgLatencyMs: number;
+    worstQuotaRemainingPct: number | null;
+    forecastRisk: ComboForecastRiskLevel;
+    forecastConfidence: ComboForecastConfidence;
+    usageSkew: number;
+    targetCount: number;
+    providerIssueCount: number;
+    dataQualityNotes: string[];
+  };
+  issues: ComboAutopilotIssue[];
+}
+
+export interface ComboAutopilotReport {
+  status: ComboAutopilotStatus;
+  checkedAt: string;
+  timeRange: UtilizationTimeRange;
+  horizon: ComboForecastHorizon;
+  summary: {
+    comboCount: number;
+    healthyCount: number;
+    degradedCount: number;
+    downCount: number;
+    issueCount: number;
+    actionableCount: number;
+  };
+  combos: ComboAutopilotCombo[];
+}
+
+export type ComboScoringInspectorFactorKey =
+  | "quota"
+  | "health"
+  | "costInv"
+  | "latencyInv"
+  | "taskFit"
+  | "stability"
+  | "tierPriority"
+  | "tierAffinity"
+  | "specificityMatch"
+  | "contextAffinity"
+  | "resetWindowAffinity";
+
+export type ComboScoringInspectorSource =
+  | "combo_health"
+  | "combo_forecast"
+  | "combo_autopilot"
+  | "runtime"
+  | "default";
+
+export interface ComboScoringInspectorFactor {
+  key: ComboScoringInspectorFactorKey;
+  value: number;
+  weight: number;
+  contribution: number;
+  source: ComboScoringInspectorSource;
+  note?: string;
+}
+
+export interface ComboScoringInspectorTarget {
+  executionKey: string;
+  stepId: string | null;
+  provider: string;
+  model: string;
+  connectionId: string | null;
+  label: string | null;
+  rank: number;
+  score: number;
+  factors: ComboScoringInspectorFactor[];
+  signals: {
+    quotaRemainingPct: number | null;
+    projectedQuotaRemainingPct: number | null;
+    successRate: number | null;
+    avgLatencyMs: number | null;
+    forecastRisk: ComboForecastRiskLevel | null;
+    autopilotIssueCount: number;
+  };
+}
+
+export interface ComboScoringInspectorCombo {
+  comboId: string;
+  comboName: string;
+  strategy: string;
+  taskType: string;
+  weights: Record<ComboScoringInspectorFactorKey, number>;
+  selectedExecutionKey: string | null;
+  targets: ComboScoringInspectorTarget[];
+  warnings: string[];
+}
+
+export interface ComboScoringInspectorResponse {
+  asOf: string;
+  timeRange: UtilizationTimeRange;
+  horizon: ComboForecastHorizon;
+  method: "read_only_recompute";
+  combos: ComboScoringInspectorCombo[];
+}
+
 export const BUCKET_SIZES: Record<UtilizationTimeRange, number> = {
   "1h": 1,
   "24h": 10,

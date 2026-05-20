@@ -6,11 +6,16 @@ import Badge from "@/shared/components/Badge";
 import { Skeleton, Spinner } from "@/shared/components/Loading";
 import TimeRangeSelector from "@/shared/components/analytics/TimeRangeSelector";
 import type {
+  ComboAutopilotCombo,
+  ComboAutopilotIssue,
+  ComboAutopilotReport,
   ComboForecastHorizon,
   ComboForecastMetrics,
   ComboForecastResponse,
   ComboHealthMetrics,
   ComboHealthResponse,
+  ComboScoringInspectorCombo,
+  ComboScoringInspectorResponse,
   UtilizationTimeRange,
 } from "@/shared/types/utilization";
 import { cn } from "@/shared/utils/cn";
@@ -47,6 +52,41 @@ function getRiskVariant(risk: ComboForecastMetrics["quotaRisk"]["level"]) {
   if (risk === "high" || risk === "medium") return "warning" as const;
   if (risk === "low") return "success" as const;
   return "default" as const;
+}
+
+function getAutopilotVariant(state: ComboAutopilotCombo["state"]) {
+  if (state === "down") return "error" as const;
+  if (state === "degraded") return "warning" as const;
+  return "success" as const;
+}
+
+function getAutopilotLabel(state: ComboAutopilotCombo["state"]) {
+  if (state === "down") return "Down";
+  if (state === "degraded") return "Needs attention";
+  return "Healthy";
+}
+
+function getIssueVariant(severity: ComboAutopilotIssue["severity"]) {
+  if (severity === "critical") return "error" as const;
+  if (severity === "warning") return "warning" as const;
+  return "info" as const;
+}
+
+function getFactorLabel(key: string) {
+  const labels: Record<string, string> = {
+    quota: "Quota",
+    health: "Health",
+    costInv: "Cost",
+    latencyInv: "Latency",
+    taskFit: "Task fit",
+    stability: "Stability",
+    tierPriority: "Tier",
+    tierAffinity: "Tier fit",
+    specificityMatch: "Specificity",
+    contextAffinity: "Context",
+    resetWindowAffinity: "Reset window",
+  };
+  return labels[key] ?? key;
 }
 
 function getTrendMeta(trend: ComboHealthMetrics["quotaHealth"]["providers"][number]["trend"]) {
@@ -227,12 +267,222 @@ function ComboForecastPanel({ forecast }: { forecast: ComboForecastMetrics }) {
   );
 }
 
+function ComboAutopilotPanel({ report }: { report: ComboAutopilotReport }) {
+  const topIssues = useMemo(
+    () =>
+      report.combos.flatMap((combo) => combo.issues.map((issue) => ({ combo, issue }))).slice(0, 5),
+    [report.combos]
+  );
+
+  return (
+    <Card className="overflow-hidden p-0">
+      <div className="flex flex-col gap-4 border-b border-black/5 px-6 py-5 dark:border-white/5 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-semibold text-text-main">Combo Health Autopilot</h3>
+            <Badge
+              variant={
+                report.status === "critical"
+                  ? "error"
+                  : report.status === "warning"
+                    ? "warning"
+                    : "success"
+              }
+              size="sm"
+            >
+              {report.status}
+            </Badge>
+          </div>
+          <p className="mt-1 text-sm text-text-muted">
+            Prioritized recommendations from combo health, forecasts, quotas, and provider health.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:min-w-90">
+          <MetricBlock
+            icon="monitor_heart"
+            label="Issues"
+            value={report.summary.issueCount.toLocaleString()}
+            subValue={`${report.summary.actionableCount} actionable`}
+          />
+          <MetricBlock
+            icon="error"
+            label="Down"
+            value={report.summary.downCount.toLocaleString()}
+          />
+          <MetricBlock
+            icon="warning"
+            label="Degraded"
+            value={report.summary.degradedCount.toLocaleString()}
+          />
+          <MetricBlock
+            icon="task_alt"
+            label="Healthy"
+            value={report.summary.healthyCount.toLocaleString()}
+          />
+        </div>
+      </div>
+
+      <div className="px-6 py-5">
+        {topIssues.length > 0 ? (
+          <div className="grid gap-3 lg:grid-cols-2">
+            {topIssues.map(({ combo, issue }) => (
+              <div
+                key={issue.id}
+                className="rounded-lg border border-black/5 bg-black/2 p-4 dark:border-white/5 dark:bg-white/2"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-text-main">
+                      {issue.title}
+                    </div>
+                    <div className="mt-1 text-xs text-text-muted">
+                      {combo.comboName} · score {combo.score}
+                    </div>
+                  </div>
+                  <Badge variant={getIssueVariant(issue.severity)} size="sm">
+                    {issue.severity}
+                  </Badge>
+                </div>
+                <p className="mt-3 text-sm text-text-muted">{issue.recommendation}</p>
+                {issue.actions.length > 0 ? (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {issue.actions.slice(0, 3).map((action) =>
+                      action.href ? (
+                        <a
+                          key={`${issue.id}-${action.type}`}
+                          href={action.href}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-black/5 px-3 py-1.5 text-xs font-medium text-text-main transition-colors hover:bg-black/5 dark:border-white/5 dark:hover:bg-white/5"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">
+                            arrow_forward
+                          </span>
+                          {action.label}
+                        </a>
+                      ) : null
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4 text-sm text-green-700 dark:text-green-300">
+            No active combo health issues detected for the selected range.
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function ComboScoringInspectorPanel({ inspector }: { inspector: ComboScoringInspectorCombo }) {
+  const topTargets = inspector.targets.slice(0, 3);
+
+  return (
+    <div className="border-t border-black/5 px-6 py-5 dark:border-white/5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-sm font-semibold text-text-main">
+              Intelligent scoring inspector
+            </div>
+            <Badge variant="info" size="sm">
+              Read-only recompute
+            </Badge>
+          </div>
+          <div className="mt-1 text-xs text-text-muted">
+            Factor-level explanation for target ranking using current health, forecast, and routing
+            heuristics.
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="primary" size="sm">
+            Task: {inspector.taskType}
+          </Badge>
+          {inspector.selectedExecutionKey ? (
+            <Badge variant="success" size="sm">
+              Selected rank #1
+            </Badge>
+          ) : null}
+        </div>
+      </div>
+
+      {inspector.warnings.length > 0 ? (
+        <div className="mt-4 rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-3 text-xs text-yellow-700 dark:text-yellow-300">
+          {inspector.warnings.slice(0, 2).join(" · ")}
+        </div>
+      ) : null}
+
+      {topTargets.length > 0 ? (
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          {topTargets.map((target) => {
+            const topFactors = target.factors.slice(0, 4);
+            return (
+              <div
+                key={target.executionKey}
+                className="rounded-lg border border-black/5 bg-black/2 p-4 dark:border-white/5 dark:bg-white/2"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-text-main">
+                      #{target.rank} {target.label || target.model}
+                    </div>
+                    <div className="mt-1 text-xs text-text-muted">
+                      {target.provider} · score {target.score.toFixed(3)}
+                    </div>
+                  </div>
+                  <Badge variant={target.rank === 1 ? "success" : "default"} size="sm">
+                    {target.rank === 1 ? "top" : `#${target.rank}`}
+                  </Badge>
+                </div>
+
+                <div className="mt-3 grid gap-2">
+                  {topFactors.map((factor) => (
+                    <div key={factor.key} className="text-xs">
+                      <div className="flex items-center justify-between gap-3 text-text-muted">
+                        <span>{getFactorLabel(factor.key)}</span>
+                        <span className="font-medium text-text-main">
+                          +{factor.contribution.toFixed(3)}
+                        </span>
+                      </div>
+                      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-black/5 dark:bg-white/5">
+                        <div
+                          className="h-full rounded-full bg-primary"
+                          style={{ width: `${Math.max(0, Math.min(100, factor.value * 100))}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-text-muted">
+                  <span>Quota {formatPercentOrDash(target.signals.quotaRemainingPct)}</span>
+                  <span>Latency {target.signals.avgLatencyMs ?? "n/a"}ms</span>
+                  <span>Issues {target.signals.autopilotIssueCount}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="mt-4 rounded-lg border border-black/5 bg-black/2 p-4 text-sm text-text-muted dark:border-white/5 dark:bg-white/2">
+          No inspectable targets for this combo.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ComboHealthCard({
   combo,
   forecast,
+  autopilot,
+  scoringInspector,
 }: {
   combo: ComboHealthMetrics;
   forecast?: ComboForecastMetrics;
+  autopilot?: ComboAutopilotCombo;
+  scoringInspector?: ComboScoringInspectorCombo;
 }) {
   const sortedDistribution = useMemo(
     () =>
@@ -253,6 +503,11 @@ function ComboHealthCard({
               <Badge variant="primary" size="sm">
                 {combo.strategy}
               </Badge>
+              {autopilot ? (
+                <Badge variant={getAutopilotVariant(autopilot.state)} size="sm">
+                  {getAutopilotLabel(autopilot.state)} · {autopilot.score}
+                </Badge>
+              ) : null}
             </div>
             <p className="mt-2 text-sm text-text-muted">
               {combo.models.length} models across {combo.quotaHealth.providers.length} providers
@@ -466,6 +721,8 @@ function ComboHealthCard({
         </div>
       ) : null}
 
+      {scoringInspector ? <ComboScoringInspectorPanel inspector={scoringInspector} /> : null}
+
       {forecast ? <ComboForecastPanel forecast={forecast} /> : null}
     </Card>
   );
@@ -509,9 +766,13 @@ export default function ComboHealthTab() {
   const [horizon, setHorizon] = useState<ComboForecastHorizon>("30d");
   const [data, setData] = useState<ComboHealthResponse | null>(null);
   const [forecastData, setForecastData] = useState<ComboForecastResponse | null>(null);
+  const [autopilotData, setAutopilotData] = useState<ComboAutopilotReport | null>(null);
+  const [scoringData, setScoringData] = useState<ComboScoringInspectorResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [forecastError, setForecastError] = useState<string | null>(null);
+  const [autopilotError, setAutopilotError] = useState<string | null>(null);
+  const [scoringError, setScoringError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
 
   const fetchData = useCallback(
@@ -524,11 +785,20 @@ export default function ComboHealthTab() {
       setError(null);
 
       try {
-        const [response, forecastResponse] = await Promise.all([
+        const [response, forecastResponse, autopilotResponse, scoringResponse] = await Promise.all([
           fetch(`/api/usage/combo-health?range=${range}`, {
             signal: controller.signal,
           }),
           fetch(`/api/usage/combo-forecast?range=${range}&horizon=${horizon}`, {
+            signal: controller.signal,
+          }),
+          fetch(
+            `/api/usage/combo-health-autopilot?range=${range}&horizon=${horizon}&includeHealthy=true`,
+            {
+              signal: controller.signal,
+            }
+          ),
+          fetch(`/api/usage/combo-scoring-inspector?range=${range}&horizon=${horizon}`, {
             signal: controller.signal,
           }),
         ]);
@@ -548,6 +818,24 @@ export default function ComboHealthTab() {
         } else {
           setForecastData(null);
           setForecastError("Failed to fetch combo forecast data");
+        }
+
+        if (autopilotResponse.ok) {
+          const autopilotResult = (await autopilotResponse.json()) as ComboAutopilotReport;
+          setAutopilotData(autopilotResult);
+          setAutopilotError(null);
+        } else {
+          setAutopilotData(null);
+          setAutopilotError("Failed to fetch combo health autopilot data");
+        }
+
+        if (scoringResponse.ok) {
+          const scoringResult = (await scoringResponse.json()) as ComboScoringInspectorResponse;
+          setScoringData(scoringResult);
+          setScoringError(null);
+        } else {
+          setScoringData(null);
+          setScoringError("Failed to fetch intelligent scoring inspector data");
         }
       } catch (fetchError) {
         if ((fetchError as Error).name === "AbortError") {
@@ -575,6 +863,14 @@ export default function ComboHealthTab() {
   const forecastsByComboId = useMemo(
     () => new Map((forecastData?.combos ?? []).map((forecast) => [forecast.comboId, forecast])),
     [forecastData]
+  );
+  const autopilotByComboId = useMemo(
+    () => new Map((autopilotData?.combos ?? []).map((combo) => [combo.comboId, combo])),
+    [autopilotData]
+  );
+  const scoringByComboId = useMemo(
+    () => new Map((scoringData?.combos ?? []).map((combo) => [combo.comboId, combo])),
+    [scoringData]
   );
 
   const handleRetry = useCallback(() => {
@@ -618,6 +914,24 @@ export default function ComboHealthTab() {
           <div className="flex items-center gap-2 text-sm text-yellow-700 dark:text-yellow-300">
             <span className="material-symbols-outlined text-[18px]">warning</span>
             {forecastError}
+          </div>
+        </Card>
+      ) : null}
+
+      {!loading && autopilotError ? (
+        <Card className="border-yellow-500/20 bg-yellow-500/5 p-4">
+          <div className="flex items-center gap-2 text-sm text-yellow-700 dark:text-yellow-300">
+            <span className="material-symbols-outlined text-[18px]">warning</span>
+            {autopilotError}
+          </div>
+        </Card>
+      ) : null}
+
+      {!loading && scoringError ? (
+        <Card className="border-yellow-500/20 bg-yellow-500/5 p-4">
+          <div className="flex items-center gap-2 text-sm text-yellow-700 dark:text-yellow-300">
+            <span className="material-symbols-outlined text-[18px]">warning</span>
+            {scoringError}
           </div>
         </Card>
       ) : null}
@@ -700,6 +1014,7 @@ export default function ComboHealthTab() {
 
       {!loading && !error && combos.length > 0 ? (
         <div className="flex flex-col gap-4">
+          {autopilotData ? <ComboAutopilotPanel report={autopilotData} /> : null}
           <div className="flex items-center gap-2 text-sm text-text-muted">
             <Spinner
               size="sm"
@@ -712,6 +1027,8 @@ export default function ComboHealthTab() {
               key={combo.comboId}
               combo={combo}
               forecast={forecastsByComboId.get(combo.comboId)}
+              autopilot={autopilotByComboId.get(combo.comboId)}
+              scoringInspector={scoringByComboId.get(combo.comboId)}
             />
           ))}
         </div>
