@@ -12,6 +12,9 @@ const callLogs = await import("../../src/lib/usage/callLogs.ts");
 const routeExplain = await import("../../src/lib/usage/routeExplain.ts");
 const route = await import("../../src/app/api/usage/route-explain/[id]/route.ts");
 
+type RouteExplainabilityResponse =
+  import("../../src/lib/usage/routeExplain.ts").RouteExplainabilityResponse;
+
 async function resetStorage() {
   core.resetDbInstance();
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
@@ -127,7 +130,7 @@ test("route explainability API returns a routing decision document", async () =>
       params: Promise.resolve({ id: "api-route-1" }),
     }
   );
-  const body = (await response.json()) as any;
+  const body = (await response.json()) as RouteExplainabilityResponse;
 
   assert.equal(response.status, 200);
   assert.equal(body.requestId, "api-route-1");
