@@ -20,6 +20,20 @@ import { fileURLToPath } from "url";
 import type Database from "better-sqlite3";
 import { DEFAULT_DATABASE_SETTINGS } from "@/types/databaseSettings";
 
+const isNodeTestRunnerChild = typeof process.env.NODE_TEST_CONTEXT === "string";
+
+const console = {
+  log: (...args: unknown[]) => {
+    if (!isNodeTestRunnerChild) globalThis.console.log(...args);
+  },
+  warn: (...args: unknown[]) => {
+    if (!isNodeTestRunnerChild) globalThis.console.warn(...args);
+  },
+  error: (...args: unknown[]) => {
+    globalThis.console.error(...args);
+  },
+};
+
 /**
  * Resolve the migrations directory path safely across platforms.
  * On Windows with global npm installs, `import.meta.url` may not be a valid

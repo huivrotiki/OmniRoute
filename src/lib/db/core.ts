@@ -19,6 +19,20 @@ import {
 import { migrateLegacyEncryptedString } from "./encryption";
 import { invalidateDbCache } from "./readCache";
 
+const isNodeTestRunnerChild = typeof process.env.NODE_TEST_CONTEXT === "string";
+
+const console = {
+  log: (...args: unknown[]) => {
+    if (!isNodeTestRunnerChild) globalThis.console.log(...args);
+  },
+  warn: (...args: unknown[]) => {
+    if (!isNodeTestRunnerChild) globalThis.console.warn(...args);
+  },
+  error: (...args: unknown[]) => {
+    globalThis.console.error(...args);
+  },
+};
+
 type SqliteDatabase = import("better-sqlite3").Database;
 type JsonRecord = Record<string, unknown>;
 type CheckpointMode = "PASSIVE" | "FULL" | "RESTART" | "TRUNCATE";
