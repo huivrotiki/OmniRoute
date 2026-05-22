@@ -46,7 +46,7 @@ import {
   type ProviderCandidate,
   type ScoringWeights,
 } from "./autoCombo/scoring.ts";
-import { supportsToolCalling } from "./modelCapabilities.ts";
+import { getResolvedModelCapabilities, supportsToolCalling } from "./modelCapabilities.ts";
 import { estimateTokens } from "./contextManager.ts";
 import { getSessionConnection } from "./sessionManager.ts";
 import { generateRoutingHints } from "./manifestAdapter";
@@ -1009,6 +1009,169 @@ function getModelContextLimitForModelString(modelStr: string) {
   const provider = parsed.provider || parsed.providerAlias || "unknown";
   const model = parsed.model || modelStr;
   return getModelContextLimit(provider, model);
+}
+
+type RequestCompatibilityRequirements = {
+  requiresTools: boolean;
+  requiresVision: boolean;
+  requiresStructuredOutput: boolean;
+  estimatedInputTokens: number;
+  requestedOutputTokens: number;
+  requiredContextTokens: number;
+};
+
+function getPositiveTokenCount(value: unknown): number {
+  const count = Number(value);
+  return Number.isFinite(count) && count > 0 ? Math.ceil(count) : 0;
+}
+
+function requestRequiresTools(body: Record<string, unknown>): boolean {
+  if (Array.isArray(body.tools) && body.tools.length > 0) return true;
+  if (Array.isArray(body.functions) && body.functions.length > 0) return true;
+  return false;
+}
+
+function requestRequiresStructuredOutput(body: Record<string, unknown>): boolean {
+  const responseFormat = isRecord(body.response_format) ? body.response_format : null;
+  const type = typeof responseFormat?.type === "string" ? responseFormat.type : null;
+  return type === "json_object" || type === "json_schema";
+}
+
+function estimateRequestInputTokens(body: Record<string, unknown>): number {
+  const estimatePayload: Record<string, unknown> = {};
+  for (const key of ["messages", "input", "tools", "functions", "response_format"]) {
+    if (body[key] !== undefined) estimatePayload[key] = body[key];
+  }
+  return Object.keys(estimatePayload).length > 0 ? estimateTokens(estimatePayload) : 0;
+}
+
+function valueContainsImagePart(value: unknown, depth = 0): boolean {
+  if (depth > 8 || value === null || value === undefined) return false;
+  if (typeof value === "string") return value.startsWith("data:image/");
+  if (Array.isArray(value)) return value.some((entry) => valueContainsImagePart(entry, depth + 1));
+  if (!isRecord(value)) return false;
+
+  const type = typeof value.type === "string" ? value.type.toLowerCase() : null;
+  if (type === "image" || type === "image_url" || type === "input_image") return true;
+  if ("image_url" in value || "input_image" in value) return true;
+
+  const source = isRecord(value.source) ? value.source : null;
+  const mediaType = typeof source?.media_type === "string" ? source.media_type.toLowerCase() : "";
+  if (mediaType.startsWith("image/")) return true;
+
+  return Object.values(value).some((entry) => valueContainsImagePart(entry, depth + 1));
+}
+
+function deriveRequestCompatibilityRequirements(
+  body: Record<string, unknown>
+): RequestCompatibilityRequirements {
+  const estimatedInputTokens = estimateRequestInputTokens(body);
+  const requestedOutputTokens = Math.max(
+    getPositiveTokenCount(body.max_tokens),
+    getPositiveTokenCount(body.max_completion_tokens)
+  );
+  return {
+    requiresTools: requestRequiresTools(body),
+    requiresVision: valueContainsImagePart(body.messages) || valueContainsImagePart(body.input),
+    requiresStructuredOutput: requestRequiresStructuredOutput(body),
+    estimatedInputTokens,
+    requestedOutputTokens,
+    requiredContextTokens: estimatedInputTokens + requestedOutputTokens,
+  };
+}
+
+function getTargetCompatibilityFailures(
+  target: ResolvedComboTarget,
+  requirements: RequestCompatibilityRequirements
+): string[] {
+  const capabilities = getResolvedModelCapabilities(target.modelStr);
+  const failures: string[] = [];
+
+  if (
+    requirements.requiresTools &&
+    (capabilities.supportsTools === false || !capabilities.toolCalling)
+  ) {
+    failures.push("tools");
+  }
+
+  if (requirements.requiresVision && capabilities.supportsVision === false) {
+    failures.push("vision");
+  }
+
+  if (requirements.requiresStructuredOutput && capabilities.structuredOutput === false) {
+    failures.push("structured_output");
+  }
+
+  if (
+    requirements.requestedOutputTokens > 0 &&
+    Number.isFinite(capabilities.maxOutputTokens) &&
+    capabilities.maxOutputTokens < requirements.requestedOutputTokens
+  ) {
+    failures.push("output_tokens");
+  }
+
+  const contextLimit = capabilities.maxInputTokens ?? capabilities.contextWindow ?? null;
+  if (
+    requirements.requiredContextTokens > 0 &&
+    contextLimit !== null &&
+    contextLimit !== undefined &&
+    contextLimit < requirements.requiredContextTokens
+  ) {
+    failures.push("context_window");
+  }
+
+  return failures;
+}
+
+function filterTargetsByRequestCompatibility(
+  targets: ResolvedComboTarget[],
+  body: Record<string, unknown>,
+  log: ComboLogger,
+  label = "Context-aware fallback"
+): ResolvedComboTarget[] {
+  if (targets.length === 0) return targets;
+  const requirements = deriveRequestCompatibilityRequirements(body);
+  const needsFiltering =
+    requirements.requiresTools ||
+    requirements.requiresVision ||
+    requirements.requiresStructuredOutput ||
+    requirements.requiredContextTokens > 0;
+  if (!needsFiltering) return targets;
+
+  const rejected: Array<{ target: ResolvedComboTarget; reasons: string[] }> = [];
+  const compatible = targets.filter((target) => {
+    const reasons = getTargetCompatibilityFailures(target, requirements);
+    if (reasons.length === 0) return true;
+    rejected.push({ target, reasons });
+    return false;
+  });
+
+  if (compatible.length === targets.length) return targets;
+  if (compatible.length === 0) {
+    log.warn(
+      "COMBO",
+      `${label}: all ${targets.length} targets were filtered by request requirements; preserving strategy order`
+    );
+    log.debug?.(
+      "COMBO",
+      `${label}: rejected targets ${rejected
+        .map((entry) => `${entry.target.modelStr}(${entry.reasons.join("+")})`)
+        .join(", ")}`
+    );
+    return targets;
+  }
+
+  log.info(
+    "COMBO",
+    `${label}: kept ${compatible.length}/${targets.length} targets for request requirements`
+  );
+  log.debug?.(
+    "COMBO",
+    `${label}: rejected targets ${rejected
+      .map((entry) => `${entry.target.modelStr}(${entry.reasons.join("+")})`)
+      .join(", ")}`
+  );
+  return compatible;
 }
 
 function sortTargetsByContextSize(targets: ResolvedComboTarget[]) {
@@ -2750,6 +2913,8 @@ export async function handleComboChat({
     log.info("COMBO", `Context-optimized ordering: largest first (${orderedTargets[0]?.modelStr})`);
   }
 
+  orderedTargets = filterTargetsByRequestCompatibility(orderedTargets, body, log);
+
   if (orderedTargets.length === 0) {
     return comboModelNotFoundResponse("Combo has no executable targets");
   }
@@ -3199,7 +3364,13 @@ async function handleRoundRobinCombo({
   const fallbackDelayMs = resolveDelayMs(config.fallbackDelayMs, 0);
 
   const orderedTargets = resolveComboTargets(combo, allCombos);
-  const filteredTargets = await applyRequestTagRouting(orderedTargets, body, log);
+  const tagFilteredTargets = await applyRequestTagRouting(orderedTargets, body, log);
+  const filteredTargets = filterTargetsByRequestCompatibility(
+    tagFilteredTargets,
+    body,
+    log,
+    "Context-aware round-robin fallback"
+  );
   const modelCount = filteredTargets.length;
   if (modelCount === 0) {
     return comboModelNotFoundResponse("Round-robin combo has no executable targets");

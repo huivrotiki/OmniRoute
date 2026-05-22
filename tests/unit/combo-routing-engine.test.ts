@@ -81,7 +81,7 @@ function streamResponse(chunks: any[]) {
   });
 }
 
-function capabilityEntry(limitContext: any) {
+function capabilityEntry(limitContext: unknown, overrides: Record<string, unknown> = {}) {
   return {
     tool_call: true,
     reasoning: false,
@@ -100,6 +100,7 @@ function capabilityEntry(limitContext: any) {
     limit_input: limitContext,
     limit_output: 4096,
     interleaved_field: null,
+    ...overrides,
   };
 }
 
@@ -1507,6 +1508,138 @@ test("handleComboChat context-optimized preserves order when all context limits 
 
   assert.equal(result.ok, true);
   assert.deepEqual(calls, ["unknown/model-a"]);
+});
+
+test("handleComboChat skips fallback targets with too small context windows", async () => {
+  saveModelsDevCapabilities({
+    openai: {
+      "tiny-context": capabilityEntry(32),
+      "large-context": capabilityEntry(4096),
+    },
+  });
+
+  const calls: any[] = [];
+  const result = await handleComboChat({
+    body: {
+      messages: [{ role: "user", content: "x".repeat(800) }],
+    },
+    combo: {
+      name: "context-aware-fallback-context",
+      strategy: "priority",
+      models: ["openai/tiny-context", "openai/large-context"],
+    },
+    handleSingleModel: async (_body: any, modelStr: any) => {
+      calls.push(modelStr);
+      return okResponse();
+    },
+    isModelAvailable: async () => true,
+    log: createLog(),
+    settings: null,
+    relayOptions: null as any,
+    allCombos: null,
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, ["openai/large-context"]);
+});
+
+test("handleComboChat skips tool, vision, and structured-output incompatible fallbacks", async () => {
+  saveModelsDevCapabilities({
+    openai: {
+      "no-tools": capabilityEntry(128000, {
+        tool_call: false,
+        attachment: true,
+        structured_output: true,
+        modalities_input: JSON.stringify(["text", "image"]),
+      }),
+      "no-vision": capabilityEntry(128000, {
+        tool_call: true,
+        attachment: false,
+        structured_output: true,
+        modalities_input: JSON.stringify(["text"]),
+      }),
+      "no-json": capabilityEntry(128000, {
+        tool_call: true,
+        attachment: true,
+        structured_output: false,
+        modalities_input: JSON.stringify(["text", "image"]),
+      }),
+      compatible: capabilityEntry(128000, {
+        tool_call: true,
+        attachment: true,
+        structured_output: true,
+        modalities_input: JSON.stringify(["text", "image"]),
+      }),
+    },
+  });
+
+  const calls: any[] = [];
+  const result = await handleComboChat({
+    body: {
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Describe this image and return JSON." },
+            { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } },
+          ],
+        },
+      ],
+      tools: [{ type: "function", function: { name: "save", parameters: {} } }],
+      response_format: { type: "json_schema", json_schema: { name: "result", schema: {} } },
+    },
+    combo: {
+      name: "context-aware-fallback-capabilities",
+      strategy: "priority",
+      models: ["openai/no-tools", "openai/no-vision", "openai/no-json", "openai/compatible"],
+    },
+    handleSingleModel: async (_body: any, modelStr: any) => {
+      calls.push(modelStr);
+      return okResponse();
+    },
+    isModelAvailable: async () => true,
+    log: createLog(),
+    settings: null,
+    relayOptions: null as any,
+    allCombos: null,
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, ["openai/compatible"]);
+});
+
+test("handleComboChat preserves strategy order when context-aware filtering rejects all targets", async () => {
+  saveModelsDevCapabilities({
+    openai: {
+      "no-tools-a": capabilityEntry(128000, { tool_call: false }),
+      "no-tools-b": capabilityEntry(128000, { tool_call: false }),
+    },
+  });
+
+  const calls: any[] = [];
+  const result = await handleComboChat({
+    body: {
+      messages: [{ role: "user", content: "Use a tool." }],
+      tools: [{ type: "function", function: { name: "lookup", parameters: {} } }],
+    },
+    combo: {
+      name: "context-aware-fallback-full-filter",
+      strategy: "priority",
+      models: ["openai/no-tools-a", "openai/no-tools-b"],
+    },
+    handleSingleModel: async (_body: any, modelStr: any) => {
+      calls.push(modelStr);
+      return okResponse();
+    },
+    isModelAvailable: async () => true,
+    log: createLog(),
+    settings: null,
+    relayOptions: null as any,
+    allCombos: null,
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, ["openai/no-tools-a"]);
 });
 
 test("handleComboChat normalizes legacy strategy names at runtime", async () => {
