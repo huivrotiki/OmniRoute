@@ -55,6 +55,28 @@ const DOT_COLORS: Record<string, string> = {
   "cloud-agent": "bg-violet-500",
 };
 
+type ProviderMessageTranslator = ((key: string, values?: Record<string, unknown>) => string) & {
+  has?: (key: string) => boolean;
+};
+
+function providerText(
+  t: ProviderMessageTranslator,
+  key: string,
+  fallback: string,
+  values?: Record<string, unknown>
+): string {
+  if (typeof t.has === "function" && t.has(key)) {
+    return t(key, values);
+  }
+  if (values) {
+    return Object.entries(values).reduce(
+      (acc, [name, value]) => acc.replaceAll(`{${name}}`, String(value)),
+      fallback
+    );
+  }
+  return fallback;
+}
+
 function getStatusDisplay(
   connected: number,
   error: number,
@@ -110,6 +132,10 @@ export default function ProviderCard({
   const isCompatible = isOpenAICompatibleProvider(providerId);
   const isCcCompatible = isClaudeCodeCompatibleProvider(providerId);
   const isAnthropicCompatible = isAnthropicCompatibleProvider(providerId) && !isCcCompatible;
+  const codexServiceTierLabel =
+    stats.codexServiceTier === "flex"
+      ? providerText(t, "codexTierFlexLabel", "Flex")
+      : providerText(t, "codexTierFastLabel", "Fast");
   const codexServiceTierChip =
     providerId === "codex" && stats.codexServiceTier && stats.codexServiceTier !== "default" ? (
       <span
@@ -119,12 +145,14 @@ export default function ProviderCard({
             ? "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400"
             : "bg-sky-500/10 text-sky-600 dark:text-sky-400"
         }`}
-        title={`Codex ${stats.codexServiceTier} service tier is active`}
+        title={providerText(t, "codexServiceTierActive", "Codex {tier} service tier is active", {
+          tier: codexServiceTierLabel,
+        })}
       >
         <span className="material-symbols-outlined text-[10px] leading-none">
           {stats.codexServiceTier === "flex" ? "speed" : "bolt"}
         </span>
-        {stats.codexServiceTier === "flex" ? "Flex" : "Fast"}
+        {codexServiceTierLabel}
       </span>
     ) : null;
 

@@ -2376,14 +2376,14 @@ export default function ProviderDetailPage() {
     const previousMode = codexGlobalServiceMode;
     setCodexGlobalServiceMode(mode);
     try {
-      const tier = mode === "none" ? (previousMode === "none" ? "priority" : previousMode) : mode;
+      const tier = mode === "none" ? (previousMode !== "none" ? previousMode : undefined) : mode;
       const res = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           codexServiceTier: {
             enabled: mode !== "none",
-            tier,
+            ...(tier ? { tier } : {}),
             supportedModels: codexGlobalSupportedModels,
           },
         }),
@@ -6540,21 +6540,37 @@ function ConnectionRow({
   const codexServiceTierBadge =
     codexServiceTier === "priority"
       ? {
-          label: "Fast",
+          label: providerText(t, "codexTierFastLabel", "Fast"),
           icon: "bolt",
           className: "bg-sky-500/15 text-sky-500",
           title: codexServiceTierIsGlobal
-            ? "Global Codex priority service tier is active"
-            : "Codex priority service tier is active for this connection",
+            ? providerText(
+                t,
+                "providerDetailGlobalPriorityActive",
+                "Global Codex priority service tier is active"
+              )
+            : providerText(
+                t,
+                "providerDetailConnectionPriorityActive",
+                "Codex priority service tier is active for this connection"
+              ),
         }
       : codexServiceTier === "flex"
         ? {
-            label: "Flex",
+            label: providerText(t, "codexTierFlexLabel", "Flex"),
             icon: "speed",
             className: "bg-cyan-500/15 text-cyan-500",
             title: codexServiceTierIsGlobal
-              ? "Global Codex flex service tier is active"
-              : "Codex flex service tier is active for this connection",
+              ? providerText(
+                  t,
+                  "providerDetailGlobalFlexActive",
+                  "Global Codex flex service tier is active"
+                )
+              : providerText(
+                  t,
+                  "providerDetailConnectionFlexActive",
+                  "Codex flex service tier is active for this connection"
+                ),
           }
         : null;
   const claudeBlockExtraUsageEnabled = isClaude

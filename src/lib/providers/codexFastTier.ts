@@ -83,6 +83,8 @@ export function getCodexEffectiveServiceTier(
   providerSpecificData: unknown,
   globalServiceMode: CodexGlobalServiceMode | boolean
 ): CodexServiceTier {
+  // Dashboard global modes are explicit overrides; use "none" to preserve the
+  // per-connection requestDefaults.serviceTier value.
   if (globalServiceMode === true) return "priority";
   if (globalServiceMode && globalServiceMode !== false && globalServiceMode !== "none") {
     return globalServiceMode;
@@ -179,15 +181,15 @@ export function applyCodexGlobalFastServiceTier<T extends JsonRecord | null | un
   }
 
   if (resolved.tier === "flex") {
-    // Preserve legacy behavior for global flex by writing the wire value directly to
-    // the outbound body when possible. The executor also accepts requestDefaults.flex.
+    // Write the wire value directly to the outbound body when possible. The executor
+    // also accepts requestDefaults.serviceTier = "flex" for downstream accounting.
     if (body && typeof body === "object" && !Array.isArray(body)) {
       (body as JsonRecord).service_tier = "flex";
     }
   }
 
-  // Global modes override per-connection defaults. Use "none" globally if each
-  // account should keep its individual service-tier setting.
+  // Intentional precedence: body service_tier > global mode > connection defaults.
+  // Use "none" globally if each account should keep its individual service-tier setting.
   return {
     ...credentials,
     providerSpecificData: {
