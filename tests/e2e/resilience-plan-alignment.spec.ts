@@ -309,7 +309,7 @@ test.describe("Resilience Plan Alignment", () => {
     await expect(
       resiliencePanel.getByRole("heading", { name: "Connection Cooldown", exact: true })
     ).toBeVisible({ timeout: 15000 });
-    await expect(resiliencePanel.getByText(/Cooldown base\s*60000ms/)).toBeVisible();
+    await expect(resiliencePanel.getByText(/Base cooldown\s*60000ms/)).toBeVisible();
     await expect(resiliencePanel.getByText(/Use upstream retry hints\s*No/)).toBeVisible();
     await expect(resiliencePanel.getByText(/Max backoff steps\s*8/)).toBeVisible();
     await expect(resiliencePanel.getByText(/Rate-limit fallback/i)).toHaveCount(0);
