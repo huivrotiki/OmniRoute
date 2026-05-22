@@ -351,6 +351,7 @@ export async function executeChatWithBreaker({
           isCombo,
           comboStepId,
           comboExecutionKey,
+          disableEmergencyFallback: isCombo,
           cachedSettings,
           skipUpstreamRetry,
           onCredentialsRefreshed: async (newCreds: any) => {

@@ -998,7 +998,7 @@ async function handleSingleModelChat(
 
       // Emergency fallback for budget exhaustion (402 / billing / quota keywords):
       // reroute to a free model (default provider/model: nvidia + openai/gpt-oss-120b) exactly once.
-      if (!runtimeOptions.emergencyFallbackTried) {
+      if (!isCombo && !runtimeOptions.emergencyFallbackTried) {
         const fallbackDecision = shouldUseFallback(
           Number(result.status || 0),
           String(result.error || ""),
@@ -1065,6 +1065,10 @@ async function handleSingleModelChat(
       // Daily quota lockout overrides subsequent rate_limited lockout, ensuring lockout until tomorrow 0:00
       let dailyQuotaExhausted = false;
       const errorStr = String(result.error || "");
+      if (isCombo && result.status === 429) {
+        return result.response;
+      }
+
       if (result.status === 429 && isDailyQuotaExhausted(errorStr)) {
         // Parse which model is quota-limited
         const match = errorStr.match(/today's quota for model ([^,]+)/);

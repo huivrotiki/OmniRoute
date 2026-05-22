@@ -104,6 +104,7 @@ export const CREDITS_EXHAUSTED_SIGNALS = [
   "insufficient_quota",
   "billing_hard_limit_reached",
   "exceeded your current quota",
+  "exceeded your current usage quota",
   "credit_balance_too_low",
   "your credit balance is too low",
   "credits exhausted",
@@ -1131,7 +1132,11 @@ export function checkFallbackError(
 
   const isRateLimitStatus = status === HTTP_STATUS.RATE_LIMITED;
   const preserveQuota429 = shouldPreserveQuotaSignalsFor429(provider);
-  const shouldUseQuotaSignal = !isRateLimitStatus || preserveQuota429;
+  const rateLimitTextReason = isRateLimitStatus
+    ? classifyErrorText(errorStr)
+    : RateLimitReason.UNKNOWN;
+  const hasExplicitQuota429Signal = rateLimitTextReason === RateLimitReason.QUOTA_EXHAUSTED;
+  const shouldUseQuotaSignal = !isRateLimitStatus || preserveQuota429 || hasExplicitQuota429Signal;
 
   // Check error message FIRST - specific patterns take priority over status codes
   if (errorText) {
@@ -1217,7 +1222,7 @@ export function checkFallbackError(
   }
 
   const configuredRule =
-    isRateLimitStatus && !preserveQuota429
+    isRateLimitStatus && !preserveQuota429 && !hasExplicitQuota429Signal
       ? matchErrorRuleByStatus(status)
       : findMatchingErrorRule(status, errorStr);
   if (configuredRule) {

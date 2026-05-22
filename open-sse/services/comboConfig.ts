@@ -23,7 +23,7 @@ const DEFAULT_COMBO_CONFIG = {
   resetAwareWeeklyWeight: 0.65,
   resetAwareTieBandPercent: 5,
   resetAwareExhaustionGuardPercent: 10,
-  failoverBeforeRetry: false,
+  failoverBeforeRetry: true,
   maxSetRetries: 0,
   setRetryDelayMs: 2000,
   resetAwareQuotaCacheTtlMs: 0,
