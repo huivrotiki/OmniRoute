@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import ProviderOnboardingWizard from "../components/onboarding/ProviderOnboardingWizard";
 
 export default function NewProviderPage() {
-  redirect("/dashboard/providers");
+  return <ProviderOnboardingWizard />;
 }
