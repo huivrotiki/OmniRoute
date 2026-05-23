@@ -40,7 +40,20 @@ const DEFAULT_EVAL_ROUTING_CONFIG: EvalRoutingConfig = {
   cacheTtlMs: 60_000,
 };
 
+const MAX_EVAL_ROUTING_CACHE_ENTRIES = 200;
 const evalRoutingCache = new Map<string, { expiresAt: number; runs: PersistedEvalRun[] }>();
+
+function pruneEvalRoutingCache(now = Date.now()): void {
+  for (const [key, entry] of evalRoutingCache) {
+    if (entry.expiresAt <= now) evalRoutingCache.delete(key);
+  }
+
+  while (evalRoutingCache.size > MAX_EVAL_ROUTING_CACHE_ENTRIES) {
+    const oldestKey = evalRoutingCache.keys().next().value;
+    if (!oldestKey) break;
+    evalRoutingCache.delete(oldestKey);
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -107,16 +120,20 @@ function buildCacheKey(targetIds: string[], config: EvalRoutingConfig): string {
 }
 
 function getEvalRuns(targetIds: string[], config: EvalRoutingConfig): PersistedEvalRun[] {
+  const now = Date.now();
+  pruneEvalRoutingCache(now);
+
   const cacheKey = buildCacheKey(targetIds, config);
   const cached = evalRoutingCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cached.runs;
+  if (cached && cached.expiresAt > now) return cached.runs;
 
   const runs = listModelEvalRunsForRouting({
     targetIds,
     suiteIds: config.suiteIds,
     maxAgeHours: config.maxAgeHours,
   });
-  evalRoutingCache.set(cacheKey, { expiresAt: Date.now() + config.cacheTtlMs, runs });
+  evalRoutingCache.set(cacheKey, { expiresAt: now + config.cacheTtlMs, runs });
+  pruneEvalRoutingCache(now);
   return runs;
 }
 

@@ -358,7 +358,6 @@ export async function executeChatWithBreaker({
           skipUpstreamRetry,
           trafficType,
           onCredentialsRefreshed: async (newCreds: any) => {
-            if (isShadowTraffic) return;
             await updateProviderCredentials(credentials.connectionId, {
               accessToken: newCreds.accessToken,
               refreshToken: newCreds.refreshToken,

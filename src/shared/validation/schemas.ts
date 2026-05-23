@@ -20,7 +20,7 @@ function isHttpUrl(value: string): boolean {
 }
 
 const CODEX_REASONING_EFFORT_VALUES = new Set(["none", "low", "medium", "high", "xhigh"]);
-const REQUEST_DEFAULT_SERVICE_TIER_VALUES = new Set(["priority", "fast"]);
+const REQUEST_DEFAULT_SERVICE_TIER_VALUES = new Set(["default", "priority", "fast", "flex"]);
 
 function validateProviderSpecificData(
   data: Record<string, unknown> | undefined,
@@ -143,7 +143,7 @@ function validateProviderSpecificData(
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message:
-            "providerSpecificData.requestDefaults.serviceTier must be priority when provided",
+            "providerSpecificData.requestDefaults.serviceTier must be one of default, priority, fast, flex when provided",
           path: ["requestDefaults", "serviceTier"],
         });
       }
@@ -554,6 +554,15 @@ const compressionModeSchema = z.enum([
 ]);
 const comboCompressionOverrideSchema = z.union([z.literal(""), compressionModeSchema]);
 
+const slaRoutingPolicySchema = z
+  .object({
+    targetP95Ms: z.coerce.number().int().positive().max(300000).optional(),
+    maxErrorRate: z.coerce.number().min(0).max(1).optional(),
+    maxCostPer1MTokens: z.coerce.number().positive().max(1000000).optional(),
+    hardConstraints: z.boolean().optional(),
+  })
+  .strict();
+
 const comboRuntimeConfigSchema = z
   .object({
     strategy: comboStrategySchema.optional(),
@@ -582,6 +591,11 @@ const comboRuntimeConfigSchema = z
     budgetCap: z.number().positive().optional(),
     explorationRate: z.number().min(0).max(1).optional(),
     routerStrategy: z.string().optional(),
+    slaTargetP95Ms: z.coerce.number().int().positive().max(300000).optional(),
+    slaMaxErrorRate: z.coerce.number().min(0).max(1).optional(),
+    slaMaxCostPer1MTokens: z.coerce.number().positive().max(1000000).optional(),
+    slaHardConstraints: z.boolean().optional(),
+    sla: slaRoutingPolicySchema.optional(),
     compositeTiers: compositeTiersSchema.optional(),
     resetAwareSessionWeight: z.coerce.number().min(0).max(100).optional(),
     resetAwareWeeklyWeight: z.coerce.number().min(0).max(100).optional(),
