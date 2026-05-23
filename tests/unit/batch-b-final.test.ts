@@ -109,6 +109,35 @@ describe("evalRunner", () => {
     assert.equal(result.details.error, "No regex value provided for evaluation.");
   });
 
+  it("should reject oversized regex patterns", () => {
+    const result = evaluateCase(
+      {
+        id: "t4-large",
+        name: "test",
+        model: "test",
+        input: {},
+        expected: { strategy: "regex", value: "a".repeat(513) },
+      },
+      "test"
+    );
+    assert.equal(result.passed, false);
+    assert.equal(result.details.error, "Regex pattern too large for safe evaluation.");
+  });
+
+  it("should evaluate stateful RegExp values consistently", () => {
+    const regex = /answer/g;
+    const evalCase = {
+      id: "t4-stateful",
+      name: "test",
+      model: "test",
+      input: {},
+      expected: { strategy: "regex", value: regex },
+    };
+
+    assert.equal(evaluateCase(evalCase, "answer").passed, true);
+    assert.equal(evaluateCase(evalCase, "answer").passed, true);
+  });
+
   it("should evaluate custom function", () => {
     const result = evaluateCase(
       {
