@@ -23,6 +23,8 @@ test("getDefaultComboConfig returns a fresh copy of the defaults", () => {
   assert.equal(first.failoverBeforeRetry, true);
   assert.equal(first.maxSetRetries, 0);
   assert.equal(first.setRetryDelayMs, 2000);
+  assert.equal(first.evalRouting.enabled, false);
+  assert.equal(first.evalRouting.maxAgeHours, 720);
 
   first.strategy = "weighted";
   assert.equal(second.strategy, "priority");
@@ -156,6 +158,28 @@ test("createComboSchema accepts context-relay strategy with handoff config", () 
   assert.equal(parsed.strategy, "context-relay");
   assert.equal(parsed.config.handoffThreshold, 0.85);
   assert.equal(parsed.config.maxMessagesForSummary, 24);
+});
+
+test("createComboSchema accepts eval-driven routing config", () => {
+  const parsed = createComboSchema.parse({
+    name: "eval-ranked",
+    models: ["openai/gpt-4o-mini", "anthropic/claude-3-haiku"],
+    strategy: "priority",
+    config: {
+      evalRouting: {
+        enabled: true,
+        suiteIds: ["golden-set", "coding-proficiency"],
+        maxAgeHours: 168,
+        minCases: 5,
+        qualityWeight: 0.9,
+        latencyWeight: 0.1,
+        cacheTtlMs: 30000,
+      },
+    },
+  });
+
+  assert.equal(parsed.config.evalRouting.enabled, true);
+  assert.deepEqual(parsed.config.evalRouting.suiteIds, ["golden-set", "coding-proficiency"]);
 });
 
 test("createComboSchema accepts SLA-aware auto routing config", () => {

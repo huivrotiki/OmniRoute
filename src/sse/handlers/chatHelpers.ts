@@ -331,8 +331,10 @@ export async function executeChatWithBreaker({
   providerProfile,
   cachedSettings,
   skipUpstreamRetry = false,
+  trafficType = "production",
 }: any): Promise<{ result: any; tlsFingerprintUsed: boolean }> {
   let tlsFingerprintUsed = false;
+  const isShadowTraffic = trafficType === "shadow";
 
   try {
     const chatFn = () =>
@@ -354,6 +356,7 @@ export async function executeChatWithBreaker({
           disableEmergencyFallback: isCombo,
           cachedSettings,
           skipUpstreamRetry,
+          trafficType,
           onCredentialsRefreshed: async (newCreds: any) => {
             await updateProviderCredentials(credentials.connectionId, {
               accessToken: newCreds.accessToken,
@@ -370,9 +373,11 @@ export async function executeChatWithBreaker({
             });
           },
           onRequestSuccess: async () => {
+            if (isShadowTraffic) return;
             await clearAccountError(credentials.connectionId, credentials);
           },
           onStreamFailure: async (failure: any) => {
+            if (isShadowTraffic) return;
             if (!credentials.connectionId) return;
             // A3 guard: if 401 and connection has extra keys, skip connection-level disable
             // (key-level failure already recorded in chatCore.ts via T07)

@@ -487,6 +487,28 @@ const comboModelEntry = z.union([
   comboRefStepInputSchema,
 ]);
 
+const shadowRoutingSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    targets: z.array(comboModelEntry).max(20).optional(),
+    sampleRate: z.coerce.number().min(0).max(1).optional(),
+    maxTargets: z.coerce.number().int().min(1).max(10).optional(),
+    timeoutMs: z.coerce.number().int().min(1000).max(120000).optional(),
+  })
+  .strict();
+
+const evalRoutingSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    suiteIds: z.array(z.string().trim().min(1).max(200)).max(50).optional(),
+    maxAgeHours: z.coerce.number().min(1).max(8760).optional(),
+    minCases: z.coerce.number().int().min(1).max(100000).optional(),
+    qualityWeight: z.coerce.number().min(0).max(1).optional(),
+    latencyWeight: z.coerce.number().min(0).max(1).optional(),
+    cacheTtlMs: z.coerce.number().int().min(1000).max(300000).optional(),
+  })
+  .strict();
+
 export const comboStrategySchema = z.enum(ROUTING_STRATEGY_VALUES);
 
 const scoringWeightsSchema = z
@@ -586,6 +608,8 @@ const comboRuntimeConfigSchema = z
     resetWindowTieBandMs: z.coerce.number().int().min(0).max(86_400_000).optional(),
     resetWindowQuotaCacheTtlMs: z.coerce.number().int().min(0).max(300_000).optional(),
     resetWindowQuotaCacheMaxStaleMs: z.coerce.number().int().min(0).max(3_600_000).optional(),
+    shadowRouting: shadowRoutingSchema.optional(),
+    evalRouting: evalRoutingSchema.optional(),
   })
   .strict();
 
