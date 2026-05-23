@@ -1709,6 +1709,41 @@ test("handleComboChat auto strategy reads strategyName from combo.config.auto an
   assert.equal(calls[0], "gemini/gemini-2.5-flash");
 });
 
+test("handleComboChat auto strategy can route by SLA targets", async () => {
+  const calls: any[] = [];
+  const log = createLog();
+  const result = await handleComboChat({
+    body: { prompt: "Keep this response fast and reliable" },
+    combo: {
+      name: "auto-sla-aware",
+      strategy: "auto",
+      models: ["openai/gpt-4o-mini", "gemini/gemini-2.5-flash", "claude/claude-sonnet-4-6"],
+      autoConfig: {
+        routerStrategy: "sla-aware",
+        slaTargetP95Ms: 1500,
+        slaMaxErrorRate: 0.05,
+      },
+    },
+    handleSingleModel: async (_body: any, modelStr: any) => {
+      calls.push(modelStr);
+      return okResponse();
+    },
+    isModelAvailable: async () => true,
+    log,
+    settings: null,
+    relayOptions: null as any,
+    allCombos: null,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(calls[0], "gemini/gemini-2.5-flash");
+  assert.ok(
+    log.entries.some(
+      (entry) => entry.level === "info" && /strategy=sla-aware/i.test(String(entry.msg))
+    )
+  );
+});
+
 test("handleComboChat context cache protection pins the model and tags tool-call responses", async () => {
   const calls: any[] = [];
   const result = await handleComboChat({

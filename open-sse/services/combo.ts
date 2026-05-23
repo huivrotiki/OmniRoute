@@ -16,6 +16,7 @@ import {
 } from "./accountFallback.ts";
 import { RateLimitReason } from "../config/constants.ts";
 import { errorResponse, unavailableResponse } from "../utils/error.ts";
+import { clamp01 } from "../utils/number.ts";
 import { recordComboIntent, recordComboRequest, getComboMetrics } from "./comboMetrics.ts";
 import { resolveComboConfig, getDefaultComboConfig } from "./comboConfig.ts";
 import { maybeGenerateHandoff, resolveContextRelayConfig } from "./contextHandoff.ts";
@@ -32,7 +33,7 @@ import {
   type IntentClassifierConfig,
 } from "./intentClassifier.ts";
 import { selectProvider as selectAutoProvider } from "./autoCombo/engine.ts";
-import { selectWithStrategy } from "./autoCombo/routerStrategy.ts";
+import { selectWithStrategy, type SlaRoutingPolicy } from "./autoCombo/routerStrategy.ts";
 import { getTaskFitness } from "./autoCombo/taskFitness.ts";
 import {
   calculateFactors,
@@ -911,11 +912,6 @@ function orderTargetsByPowerOfTwoChoices(targets: ResolvedComboTarget[], comboNa
   return [targets[selectedIndex], ...targets.filter((_, index) => index !== selectedIndex)];
 }
 
-function clamp01(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(1, value));
-}
-
 function finiteNumberOrNull(value: unknown): number | null {
   const numericValue = Number(value);
   return Number.isFinite(numericValue) ? numericValue : null;
@@ -991,6 +987,29 @@ function resolveResetWindowConfig(config: Record<string, unknown> | null | undef
     quotaCacheTtlMs: getDurationConfig(config?.resetWindowQuotaCacheTtlMs, 0, 300_000),
     quotaCacheMaxStaleMs: getDurationConfig(config?.resetWindowQuotaCacheMaxStaleMs, 0, 3_600_000),
   };
+}
+
+function resolveSlaRoutingPolicy(
+  config: Record<string, unknown> | null | undefined
+): SlaRoutingPolicy | undefined {
+  if (!config) return undefined;
+  const nestedSla = isRecord(config.sla) ? config.sla : {};
+  const targetP95Ms = finiteNumberOrNull(config.slaTargetP95Ms ?? nestedSla.targetP95Ms);
+  const maxErrorRate = finiteNumberOrNull(config.slaMaxErrorRate ?? nestedSla.maxErrorRate);
+  const maxCostPer1MTokens = finiteNumberOrNull(
+    config.slaMaxCostPer1MTokens ?? nestedSla.maxCostPer1MTokens
+  );
+  const hardConstraints = config.slaHardConstraints ?? nestedSla.hardConstraints;
+
+  const policy: SlaRoutingPolicy = {};
+  if (targetP95Ms !== null && targetP95Ms > 0) policy.targetP95Ms = targetP95Ms;
+  if (maxErrorRate !== null && maxErrorRate >= 0) policy.maxErrorRate = clamp01(maxErrorRate);
+  if (maxCostPer1MTokens !== null && maxCostPer1MTokens > 0) {
+    policy.maxCostPer1MTokens = maxCostPer1MTokens;
+  }
+  if (typeof hardConstraints === "boolean") policy.hardConstraints = hardConstraints;
+
+  return Object.keys(policy).length > 0 ? policy : undefined;
 }
 
 function getResetAwareProvider(target: ResolvedComboTarget): string | null {
@@ -2365,6 +2384,7 @@ export async function handleComboChat({
     const modePack =
       typeof autoConfigSource.modePack === "string" ? autoConfigSource.modePack : undefined;
     const resetWindowConfig = resolveResetWindowConfig(autoConfigSource);
+    const slaPolicy = resolveSlaRoutingPolicy(autoConfigSource);
 
     let lastKnownGoodProvider: string | undefined;
     try {
@@ -2390,7 +2410,13 @@ export async function handleComboChat({
         try {
           const decision = selectWithStrategy(
             candidates,
-            { taskType, requestHasTools, lastKnownGoodProvider, estimatedInputTokens },
+            {
+              taskType,
+              requestHasTools,
+              lastKnownGoodProvider,
+              estimatedInputTokens,
+              sla: slaPolicy,
+            },
             routingStrategy
           );
           selectedProvider = decision.provider;

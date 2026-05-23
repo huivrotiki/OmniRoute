@@ -158,6 +158,35 @@ test("createComboSchema accepts context-relay strategy with handoff config", () 
   assert.equal(parsed.config.maxMessagesForSummary, 24);
 });
 
+test("createComboSchema accepts SLA-aware auto routing config", () => {
+  const parsed = createComboSchema.parse({
+    name: "sla-auto",
+    models: ["openai/gpt-4o-mini", "gemini/gemini-2.5-flash"],
+    strategy: "auto",
+    config: {
+      routerStrategy: "sla-aware",
+      slaTargetP95Ms: "1500",
+      slaMaxErrorRate: "0.05",
+      slaMaxCostPer1MTokens: "4.5",
+      slaHardConstraints: true,
+      sla: {
+        targetP95Ms: "2000",
+        maxErrorRate: "0.1",
+        hardConstraints: false,
+      },
+    },
+  });
+
+  assert.equal(parsed.strategy, "auto");
+  assert.equal(parsed.config.routerStrategy, "sla-aware");
+  assert.equal(parsed.config.slaTargetP95Ms, 1500);
+  assert.equal(parsed.config.slaMaxErrorRate, 0.05);
+  assert.equal(parsed.config.slaMaxCostPer1MTokens, 4.5);
+  assert.equal(parsed.config.slaHardConstraints, true);
+  assert.equal(parsed.config.sla.targetP95Ms, 2000);
+  assert.equal(parsed.config.sla.maxErrorRate, 0.1);
+});
+
 test("createComboSchema accepts structured combo steps with pinned connection and combo refs", () => {
   const parsed = createComboSchema.parse({
     name: "codex-pinned",

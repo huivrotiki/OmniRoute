@@ -532,6 +532,15 @@ const compressionModeSchema = z.enum([
 ]);
 const comboCompressionOverrideSchema = z.union([z.literal(""), compressionModeSchema]);
 
+const slaRoutingPolicySchema = z
+  .object({
+    targetP95Ms: z.coerce.number().int().positive().max(300000).optional(),
+    maxErrorRate: z.coerce.number().min(0).max(1).optional(),
+    maxCostPer1MTokens: z.coerce.number().positive().max(1000000).optional(),
+    hardConstraints: z.boolean().optional(),
+  })
+  .strict();
+
 const comboRuntimeConfigSchema = z
   .object({
     strategy: comboStrategySchema.optional(),
@@ -560,6 +569,11 @@ const comboRuntimeConfigSchema = z
     budgetCap: z.number().positive().optional(),
     explorationRate: z.number().min(0).max(1).optional(),
     routerStrategy: z.string().optional(),
+    slaTargetP95Ms: z.coerce.number().int().positive().max(300000).optional(),
+    slaMaxErrorRate: z.coerce.number().min(0).max(1).optional(),
+    slaMaxCostPer1MTokens: z.coerce.number().positive().max(1000000).optional(),
+    slaHardConstraints: z.boolean().optional(),
+    sla: slaRoutingPolicySchema.optional(),
     compositeTiers: compositeTiersSchema.optional(),
     resetAwareSessionWeight: z.coerce.number().min(0).max(100).optional(),
     resetAwareWeeklyWeight: z.coerce.number().min(0).max(100).optional(),
