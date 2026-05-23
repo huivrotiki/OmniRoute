@@ -513,7 +513,6 @@ function scheduleShadowRouting(
           ...body,
           model: target.modelStr,
           stream: false,
-          _omnirouteShadowRouting: true,
         };
         try {
           if (isModelAvailable) {
