@@ -51,12 +51,16 @@ function isGraphicalLinuxSession() {
   return false;
 }
 
+function userHomeDir() {
+  return process.env.HOME || homedir();
+}
+
 function linuxSystemdUnitPath() {
-  return join(homedir(), ".config", "systemd", "user", LINUX_SERVICE_NAME);
+  return join(userHomeDir(), ".config", "systemd", "user", LINUX_SERVICE_NAME);
 }
 
 function linuxDesktopPath() {
-  return join(homedir(), ".config", "autostart", LINUX_DESKTOP_NAME);
+  return join(userHomeDir(), ".config", "autostart", LINUX_DESKTOP_NAME);
 }
 
 function runUserSystemctl(args, { ignoreFailure = true } = {}) {
@@ -104,7 +108,7 @@ function tryEnableLinger() {
 function writeLinuxSystemdUnit(cliPath) {
   const unitDir = dirname(linuxSystemdUnitPath());
   mkdirSync(unitDir, { recursive: true });
-  const envFile = join(homedir(), ".omniroute", ".env");
+  const envFile = join(userHomeDir(), ".omniroute", ".env");
   const lines = [
     "[Unit]",
     "Description=OmniRoute AI proxy router",

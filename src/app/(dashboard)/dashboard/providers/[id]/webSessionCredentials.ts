@@ -81,6 +81,12 @@ export const WEB_SESSION_CREDENTIAL_REQUIREMENTS = {
     placeholder: "convex-session-id=abc123...; Cookie: ...",
     acceptsFullCookieHeader: true,
   },
+  "adapta-web": {
+    kind: "cookie",
+    credentialName: "__client",
+    placeholder: "__client=... or full Cookie header from agent.adapta.one",
+    acceptsFullCookieHeader: true,
+  },
 } satisfies Record<keyof typeof WEB_COOKIE_PROVIDERS, WebSessionCredentialRequirement>;
 
 export function getWebSessionCredentialRequirement(
