@@ -3116,6 +3116,8 @@ export async function handleComboChat({
           strategy,
         });
 
+        let attemptBody = body;
+
         // Universal handoff: inject existing handoff if model changed
         if (
           universalHandoffConfig.enabled &&
@@ -3125,7 +3127,7 @@ export async function handleComboChat({
           const lastModel = getLastSessionModel(relayOptions.sessionId, combo.name);
           if (lastModel && lastModel !== modelStr) {
             const existingHandoff = getHandoff(relayOptions.sessionId, combo.name);
-            body = injectUniversalHandoffBody(
+            attemptBody = injectUniversalHandoffBody(
               body,
               lastModel,
               modelStr,
@@ -3134,7 +3136,7 @@ export async function handleComboChat({
             );
           }
         }
-        const result = await handleSingleModelWrapped(body, modelStr, {
+        const result = await handleSingleModelWrapped(attemptBody, modelStr, {
           ...target,
           failoverBeforeRetry: config.failoverBeforeRetry,
         });
@@ -3197,6 +3199,8 @@ export async function handleComboChat({
             relayOptions?.sessionId &&
             !(body as Record<string, unknown>)?.[SKIP_UNIVERSAL_HANDOFF_FLAG]
           ) {
+            const prevModel = getLastSessionModel(relayOptions.sessionId, combo.name);
+
             recordSessionModelUsage(
               relayOptions.sessionId,
               combo.name,
@@ -3205,7 +3209,6 @@ export async function handleComboChat({
               target.connectionId ?? undefined
             );
 
-            const prevModel = getLastSessionModel(relayOptions.sessionId, combo.name);
             if (prevModel && prevModel !== modelStr) {
               const handoffSourceMessages =
                 Array.isArray(body?.messages) && body.messages.length > 0

@@ -63,12 +63,12 @@ function linuxDesktopPath() {
   return join(userHomeDir(), ".config", "autostart", LINUX_DESKTOP_NAME);
 }
 
-function runUserSystemctl(args, { ignoreFailure = true } = {}) {
+function runUserSystemctl(args) {
   try {
     execFileSync("systemctl", ["--user", ...args], { stdio: "ignore" });
     return true;
   } catch {
-    return ignoreFailure ? false : false;
+    return false;
   }
 }
 

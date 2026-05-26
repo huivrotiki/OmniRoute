@@ -57,6 +57,7 @@ test("Linux autostart invokes loginctl/systemctl without shell interpolation", (
   assert.match(source, /execFileSync\("systemctl", \["--user", \.\.\.args\]/);
   assert.match(source, /execFileSync\("loginctl", \["enable-linger", user\]/);
   assert.match(source, /execFileSync\("loginctl", \["show-user", user, "-p", "Linger"\]/);
+  assert.doesNotMatch(source, /ignoreFailure\s*\?\s*false\s*:\s*false/);
   assert.doesNotMatch(source, /execSync\(`(?:loginctl|systemctl)\b/);
 });
 
