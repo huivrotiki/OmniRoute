@@ -68,8 +68,8 @@ docs/i18n/
 docs/i18n/**
 docs/screenshots/
 docs/screenshots/**
-docs/diagrams/exported/
-docs/diagrams/exported/**
+!docs/diagrams/exported/
+!docs/diagrams/exported/*.svg
 
 # Electron (separate build)
 electron
