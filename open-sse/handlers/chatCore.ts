@@ -109,6 +109,7 @@ import {
 import {
   getCodexRequestDefaults,
   normalizeCodexServiceTier,
+  type CodexServiceTier,
 } from "@/lib/providers/requestDefaults";
 import { cacheReasoningFromAssistantMessage } from "../services/reasoningCache.ts";
 import { sanitizeOpenAITool } from "../services/toolSchemaSanitizer.ts";
@@ -1385,8 +1386,9 @@ export async function handleChatCore({
   };
   let tokensCompressed: number | null = null;
   body = injectSystemPrompt(body);
-  let effectiveServiceTier: "standard" | "priority" = "standard";
-  const resolveEffectiveServiceTier = (requestBody?: unknown): "standard" | "priority" => {
+  type EffectiveServiceTier = "standard" | CodexServiceTier;
+  let effectiveServiceTier: EffectiveServiceTier = "standard";
+  const resolveEffectiveServiceTier = (requestBody?: unknown): EffectiveServiceTier => {
     if (provider !== "codex") return "standard";
     const requestRecord =
       requestBody && typeof requestBody === "object" && !Array.isArray(requestBody)
@@ -1394,11 +1396,31 @@ export async function handleChatCore({
         : {};
     const rawServiceTier = requestRecord.service_tier;
     if (typeof rawServiceTier === "string" && rawServiceTier.trim().length > 0) {
-      return normalizeCodexServiceTier(rawServiceTier) ? "priority" : "standard";
+      const normalizedServiceTier = normalizeCodexServiceTier(rawServiceTier);
+      if (normalizedServiceTier) return normalizedServiceTier;
     }
-    return getCodexRequestDefaults(credentials?.providerSpecificData).serviceTier === "priority"
-      ? "priority"
-      : "standard";
+    return getCodexRequestDefaults(credentials?.providerSpecificData).serviceTier ?? "standard";
+  };
+  const resolveReportedServiceTier = (
+    payload?: unknown,
+    maxDepth = 3
+  ): EffectiveServiceTier | null => {
+    if (
+      maxDepth <= 0 ||
+      provider !== "codex" ||
+      !payload ||
+      typeof payload !== "object" ||
+      Array.isArray(payload)
+    ) {
+      return null;
+    }
+    const record = payload as Record<string, unknown>;
+    const rawServiceTier = record.service_tier;
+    if (typeof rawServiceTier === "string" && rawServiceTier.trim().length > 0) {
+      const normalizedServiceTier = normalizeCodexServiceTier(rawServiceTier);
+      if (normalizedServiceTier) return normalizedServiceTier;
+    }
+    return resolveReportedServiceTier(record.response, maxDepth - 1);
   };
   const persistFailureUsage = (statusCode: number, errorCode?: string | null) => {
     saveRequestUsage({
@@ -4479,6 +4501,7 @@ export async function handleChatCore({
           }
         : responseBody
     );
+    effectiveServiceTier = resolveReportedServiceTier(responseBody) ?? effectiveServiceTier;
 
     // Notify success - caller can clear error status if needed
     if (onRequestSuccess) {
@@ -4879,6 +4902,7 @@ export async function handleChatCore({
         // Cache capture is non-critical — never block the stream
       }
     }
+    effectiveServiceTier = resolveReportedServiceTier(streamResponseBody) ?? effectiveServiceTier;
 
     // Track cache token metrics for streaming responses
     if (streamUsage && typeof streamUsage === "object") {

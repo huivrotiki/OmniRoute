@@ -23,6 +23,7 @@ permissions:
 
 jobs:
   docker:
+    if: github.repository == 'diegosouzapw/OmniRoute'
     name: Build and Push Docker (multi-arch)
     runs-on: ubuntu-latest
     env:

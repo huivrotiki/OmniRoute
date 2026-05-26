@@ -46,7 +46,9 @@ function toStringOrNull(value: unknown): string | null {
 
 function normalizeServiceTier(value: unknown): string {
   const tier = typeof value === "string" ? value.trim().toLowerCase() : "";
-  return tier === "priority" || tier === "fast" ? "priority" : "standard";
+  if (tier === "priority" || tier === "fast") return "priority";
+  if (tier === "flex") return "flex";
+  return "standard";
 }
 
 function toNumber(value: unknown): number {
