@@ -20,6 +20,7 @@
 - **oauth:** repair native Google loopback callback flow and support remote callbacks via state matching on 127.0.0.1 (#2796 — thanks @akarray)
 - **combos:** fix combo handling so transient 429 rate limit errors do not poison or persist the rate limited state for the same-provider connection (#2800 — thanks @apoapostolov)
 - **gemini:** translate signature-less Gemini thinking model tool calls to text parts to prevent `400 "missing thought_signature"` errors (#2801 — thanks @herjarsa)
+- **translator:** strip `safety_identifier` from `/v1/responses` body before forwarding to Chat Completions upstream; fixes LobeHub-originated `400` errors (#2770)
 - **warning-cleanup:** relax node engine constraint to `>=22.0.0` and clean dependencies (keeping `marked-terminal` to prevent TUI REPL crash) (#2792 — thanks @oyi77)
 
 ### 🧹 Chores
