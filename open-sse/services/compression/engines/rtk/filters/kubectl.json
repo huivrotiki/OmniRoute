@@ -1,12 +1,14 @@
 {
   "id": "kubectl",
   "label": "kubectl",
-  "description": "Keep kubectl errors, warnings, and resource status while stripping verbose YAML/JSON noise.",
+  "description": "Keep kubectl status, rollout and error output. Skips logs/exec/top (arbitrary content) and structured -o json/yaml output.",
   "category": "cloud",
   "priority": 78,
   "match": {
     "outputTypes": ["kubectl"],
-    "commands": ["^kubectl\\s+(?:get|describe|logs|apply|delete|rollout|exec|top|events?)\\b"],
+    "commands": [
+      "^kubectl\\s+(?:get|describe|apply|delete|rollout|events?)(?!.*(?:-o|--output)(?:\\s+|=)(?:json|yaml|go-template|jsonpath|template|name))\\b"
+    ],
     "patterns": [
       "NAME\\s+READY\\s+STATUS",
       "NAME\\s+TYPE\\s+CLUSTER-IP",
@@ -80,6 +82,18 @@
       "command": "kubectl rollout status",
       "input": "Waiting for deployment \"api\" rollout to finish: 0 of 3 updated replicas are available...\nWaiting for deployment \"api\" rollout to finish: 1 of 3 updated replicas are available...\ndeployment \"api\" successfully rolled out\n",
       "expected": "deployment \"api\" successfully rolled out"
+    },
+    {
+      "name": "skips kubectl logs (arbitrary application output)",
+      "command": "kubectl logs api-pod",
+      "input": "2026-05-28T10:00:00 INFO request handled\n2026-05-28T10:00:01 INFO request handled\n",
+      "expected": "2026-05-28T10:00:00 INFO request handled\n2026-05-28T10:00:01 INFO request handled"
+    },
+    {
+      "name": "skips json output (would corrupt structured data)",
+      "command": "kubectl get pods -o json",
+      "input": "{\n  \"apiVersion\": \"v1\",\n  \"items\": [\n    { \"metadata\": { \"name\": \"api\" } }\n  ]\n}\n",
+      "expected": "{\n  \"apiVersion\": \"v1\",\n  \"items\": [\n    { \"metadata\": { \"name\": \"api\" } }\n  ]\n}"
     }
   ]
 }

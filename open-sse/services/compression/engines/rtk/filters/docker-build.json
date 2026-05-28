@@ -6,7 +6,10 @@
   "priority": 82,
   "match": {
     "outputTypes": ["docker-build"],
-    "commands": ["^docker\\s+(?:build|buildx\\s+build)\\b", "^docker\\s+compose\\s+build\\b"],
+    "commands": [
+      "^docker\\s+(?:build|buildx\\s+build)\\b",
+      "^(?:docker\\s+compose|docker-compose)\\s+build\\b"
+    ],
     "patterns": [
       "Successfully built \\w+",
       "Successfully tagged \\S+",
@@ -35,7 +38,6 @@
       "WARN\\s*\\["
     ],
     "dropPatterns": [
-      "^#\\d+\\s+\\d+\\.\\d+\\s",
       "^#\\d+\\s+sha256:",
       "^\\s*$",
       "^\\s+\\d+\\.\\d+s$",
@@ -65,6 +67,12 @@
       "command": "docker build",
       "input": "Step 1/2 : FROM node:20\nStep 2/2 : RUN npm install\nERROR: failed to solve: process \"/bin/sh -c npm install\" did not complete successfully: exit code: 1\n",
       "expected": "Step 1/2 : FROM node:20\nStep 2/2 : RUN npm install\nERROR: failed to solve: process \"/bin/sh -c npm install\" did not complete successfully: exit code: 1"
+    },
+    {
+      "name": "preserves buildkit-prefixed RUN step errors",
+      "command": "docker build",
+      "input": "#8 [build 3/4] RUN npm run build\n#8 0.456 src/a.ts:1:1 - ERROR TS2322: Type 'string' is not assignable\n#8 0.789 npm ERR! exit code 1\n#8 ERROR: process \"/bin/sh -c npm run build\" did not complete successfully: exit code: 1\n",
+      "expected": "#8 0.456 src/a.ts:1:1 - ERROR TS2322: Type 'string' is not assignable\n#8 0.789 npm ERR! exit code 1\n#8 ERROR: process \"/bin/sh -c npm run build\" did not complete successfully: exit code: 1"
     }
   ]
 }
