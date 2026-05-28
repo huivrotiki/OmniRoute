@@ -78,6 +78,23 @@ describe("RTK new-filter catalog (kubectl, docker-build, composer, gh)", () => {
     }
   });
 
+  it("gh skips `gh api` and --json invocations (structured output)", () => {
+    const jsonOutput = '{\n  "number": 1,\n  "title": "feat: x"\n}';
+    for (const cmd of [
+      "gh api repos/owner/repo/pulls/1",
+      "gh api graphql -f query=...",
+      "gh pr list --json number,title",
+      "gh issue list --json number,title,author",
+    ]) {
+      const filter = matchRtkFilter(jsonOutput, cmd, { customFiltersEnabled: false });
+      assert.notEqual(
+        filter?.id,
+        "gh",
+        `gh filter must not claim structured output: "${cmd}"`
+      );
+    }
+  });
+
   it("docker-build matches both v2 (docker compose) and legacy (docker-compose) build", () => {
     const output = "Step 1/2 : FROM node:20\nSuccessfully built abc123";
     for (const cmd of ["docker build .", "docker compose build", "docker-compose build", "docker buildx build ."]) {
