@@ -1,4 +1,5 @@
 import { CORS_HEADERS } from "../utils/cors.ts";
+import { normalizeHeaders } from "../utils/headers.ts";
 import { detectFormatFromEndpoint, getTargetFormat } from "../services/provider.ts";
 import { injectSystemPrompt } from "../services/systemPrompt.ts";
 import { translateRequest, needsTranslation } from "../translator/index.ts";
@@ -1617,13 +1618,13 @@ export async function handleChatCore({
   };
 
   const persistCodexQuotaState = async (
-    headers: Headers | Record<string, string> | null,
+    headers: Record<string, string> | null,
     status = 0
   ) => {
     if (provider !== "codex" || !connectionId || !headers) return;
 
     try {
-      const quota = parseCodexQuotaHeaders(headers as Headers);
+      const quota = parseCodexQuotaHeaders(headers);
       if (!quota) return;
 
       const existingProviderData =
@@ -3643,9 +3644,10 @@ export async function handleChatCore({
                   .clone()
                   .text()
                   .catch(() => "");
-                const decision = classifyModelScope429(bodyPeek, res.response.headers);
+                const normalizedHeaders = normalizeHeaders(res.response.headers);
+                const decision = classifyModelScope429(bodyPeek, normalizedHeaders);
                 if (decision.retryable) {
-                  const delay = getModelScopeRetryDelayMs(res.response.headers, attempts);
+                  const delay = getModelScopeRetryDelayMs(normalizedHeaders, attempts);
                   log?.warn?.(
                     "MODELSCOPE_RETRY",
                     `429 ${decision.kind}; retrying in ${delay}ms (model remaining: ${decision.snapshot.modelRemaining ?? "unknown"})`
@@ -3664,7 +3666,7 @@ export async function handleChatCore({
                 attempts < maxAttempts - 1
               ) {
                 const failedConnectionId = credentials?.connectionId || connectionId;
-                const retryAfterHeader = res.response.headers.get("retry-after");
+                const retryAfterHeader = normalizeHeaders(res.response.headers)["retry-after"] ?? null;
                 const retryAfterMs = retryAfterHeader
                   ? Number.parseFloat(retryAfterHeader) * 1000
                   : null;
@@ -3782,27 +3784,7 @@ export async function handleChatCore({
         }
 
         const statusText = rawResult.response.statusText;
-        const rawHeaders = rawResult.response.headers;
-        const headersObj: Record<string, string> = {};
-        if (rawHeaders) {
-          if (typeof rawHeaders.forEach === "function") {
-            try {
-              rawHeaders.forEach((v: string, k: string) => {
-                headersObj[k] = v;
-              });
-            } catch {
-              try {
-                for (const [k, v] of rawHeaders as unknown as Iterable<[string, string]>) {
-                  headersObj[k] = v;
-                }
-              } catch {
-                Object.assign(headersObj, rawHeaders);
-              }
-            }
-          } else {
-            Object.assign(headersObj, rawHeaders);
-          }
-        }
+        const headersObj = normalizeHeaders(rawResult.response.headers);
         const headers = new Headers(headersObj);
         stripStaleForwardingHeaders(headers);
         const contentType = (headers.get("content-type") || "").toLowerCase();
@@ -4150,7 +4132,7 @@ export async function handleChatCore({
     }
   }
 
-  await persistCodexQuotaState(providerResponse.headers, providerResponse.status);
+  await persistCodexQuotaState(normalizeHeaders(providerResponse.headers), providerResponse.status);
 
   // Check provider response - return error info for fallback handling
   if (!providerResponse.ok) {
@@ -4179,7 +4161,7 @@ export async function handleChatCore({
     // T06/T10/T36: classify provider errors and persist terminal account states.
     let errorType = classifyProviderError(statusCode, message, provider);
     if (statusCode === 429 && isModelScope()) {
-      const decision = classifyModelScope429(message, providerResponse.headers);
+      const decision = classifyModelScope429(message, normalizeHeaders(providerResponse.headers));
       errorType =
         decision.kind === "quota_exhausted"
           ? PROVIDER_ERROR_TYPES.QUOTA_EXHAUSTED
