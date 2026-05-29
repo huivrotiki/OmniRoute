@@ -5,7 +5,7 @@ import {
   loadRtkFilters,
   matchRtkFilter,
   runRtkFilterTests,
-} from "../../../open-sse/services/compression/index.ts";
+} from "../../open-sse/services/compression/index.ts";
 
 const NEW_FILTERS = ["kubectl", "docker-build", "composer", "gh"] as const;
 
