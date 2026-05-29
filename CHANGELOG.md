@@ -21,6 +21,7 @@
 - **combos:** fix combo handling so transient 429 rate limit errors do not poison or persist the rate limited state for the same-provider connection (#2800 — thanks @apoapostolov)
 - **gemini:** translate signature-less Gemini thinking model tool calls to text parts to prevent `400 "missing thought_signature"` errors (#2801 — thanks @herjarsa)
 - **warning-cleanup:** relax node engine constraint to `>=22.0.0` and clean dependencies (keeping `marked-terminal` to prevent TUI REPL crash) (#2792 — thanks @oyi77)
+- **usage:** un-invert GitHub Copilot Free / limited plan quota — `limited_user_quotas` is the *remaining* count, not used, so the dashboard now shows 100% when the quota is untouched and 0% when fully exhausted (#2876 — thanks @androw)
 
 ### 🧹 Chores
 
@@ -30,7 +31,7 @@
 ### 🏆 Hall of Contributors
 
 A special thanks to everyone who contributed code, reviews, and tests for this release:
-@akarray, @apoapostolov, @hartmark, @herjarsa, @jeferssonlemes, @oyi77
+@akarray, @androw, @apoapostolov, @hartmark, @herjarsa, @jeferssonlemes, @oyi77
 
 ---
 
