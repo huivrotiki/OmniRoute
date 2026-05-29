@@ -358,6 +358,9 @@ export function openaiResponsesToOpenAIRequest(
     }
   }
   delete result.reasoning;
+  // Strip Responses-API-only fields that Chat Completions rejects with 400.
+  // safety_identifier is sent by LobeHub and has no Chat Completions equivalent (#2770).
+  delete result.safety_identifier;
 
   return result;
 }
